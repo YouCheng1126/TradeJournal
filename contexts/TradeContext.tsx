@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { Trade, Strategy, Tag, TagCategory } from '../types';
+import { Trade, Strategy, TagCategory, Tag } from '../types';
 import { supabase, isSupabaseConfigured } from '../utils/supabaseClient';
 
 interface DateRange {
@@ -12,20 +12,26 @@ interface TradeContextType {
   trades: Trade[]; // All trades
   filteredTrades: Trade[]; // Trades within date range
   strategies: Strategy[];
+  
+  // Tag System
+  tagCategories: TagCategory[];
   tags: Tag[];
-  categories: TagCategory[];
+  
   loading: boolean;
   dateRange: DateRange;
   setDateRange: (range: DateRange) => void;
+  
   addTrade: (trade: Trade) => Promise<void>;
   updateTrade: (trade: Trade) => Promise<void>;
   deleteTrade: (id: string) => Promise<void>;
+  
   addStrategy: (strategy: Strategy) => Promise<void>;
   updateStrategy: (strategy: Strategy) => Promise<void>;
   deleteStrategy: (id: string) => Promise<void>;
-  // Tag Management
-  addCategory: (category: TagCategory) => Promise<void>;
-  deleteCategory: (id: string) => Promise<void>;
+  
+  // New Tag Management
+  addTagCategory: (cat: TagCategory) => Promise<void>;
+  deleteTagCategory: (id: string) => Promise<void>;
   addTag: (tag: Tag) => Promise<void>;
   deleteTag: (id: string) => Promise<void>;
 }
@@ -45,36 +51,36 @@ const DUMMY_STRATEGIES: Strategy[] = [
   { id: 'pb2', name: 'Bull Flag Breakout', description: 'Classic continuation pattern.', rules: ['Strong uptrend', 'Tight consolidation'] },
 ];
 
-const DUMMY_CATEGORIES: TagCategory[] = [
-    { id: 'cat1', name: 'Psychology (心態)', color: 'bg-purple-500' },
-    { id: 'cat2', name: 'Mistakes (錯誤)', color: 'bg-red-500' },
-];
+// Local Storage Keys
+const LS_TRADES = 'zella_trades';
+const LS_STRATEGIES = 'zella_strategies';
+const LS_TAG_CATS = 'zella_tag_cats';
+const LS_TAGS = 'zella_tags';
 
-const DUMMY_TAGS: Tag[] = [
-  { id: 't1', name: 'FOMO', categoryId: 'cat1' },
-  { id: 't3', name: 'Late Entry', categoryId: 'cat2' },
-];
-
-// Local Storage Helper
-const getLocalTrades = (): Trade[] => {
+// Helper to load/save
+const loadLocal = <T,>(key: string, defaultVal: T): T => {
     try {
-        const stored = localStorage.getItem('zella_trades');
-        return stored ? JSON.parse(stored) : [];
+        const item = localStorage.getItem(key);
+        return item ? JSON.parse(item) : defaultVal;
     } catch {
-        return [];
+        return defaultVal;
     }
 };
 
-const saveLocalTrades = (trades: Trade[]) => {
-    localStorage.setItem('zella_trades', JSON.stringify(trades));
+const saveLocal = (key: string, val: any) => {
+    try {
+        localStorage.setItem(key, JSON.stringify(val));
+    } catch (e) {
+        console.error("Local Storage Save Error", e);
+    }
 };
 
 export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [trades, setTrades] = useState<Trade[]>([]);
-  const [strategies, setStrategies] = useState<Strategy[]>(DUMMY_STRATEGIES);
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
   
   // Tag State
-  const [categories, setCategories] = useState<TagCategory[]>([]);
+  const [tagCategories, setTagCategories] = useState<TagCategory[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -88,14 +94,15 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         Promise.all([
             fetchTradesSupabase(),
             fetchStrategiesSupabase(),
-            fetchCategoriesSupabase(),
+            fetchTagCategoriesSupabase(),
             fetchTagsSupabase()
         ]).finally(() => setLoading(false));
     } else {
         console.log("Supabase not configured. Using LocalStorage/Dummy.");
-        setTrades(getLocalTrades());
-        setCategories(DUMMY_CATEGORIES);
-        setTags(DUMMY_TAGS);
+        setTrades(loadLocal(LS_TRADES, []));
+        setStrategies(loadLocal(LS_STRATEGIES, DUMMY_STRATEGIES));
+        setTagCategories(loadLocal(LS_TAG_CATS, []));
+        setTags(loadLocal(LS_TAGS, []));
         setLoading(false);
     }
   }, []);
@@ -141,7 +148,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             const formattedData: Trade[] = data.map((t: any) => ({
                 ...t,
                 id: String(t.id),
-                tags: t.tags || [],
+                tags: t.tags || [], // Renamed column
                 screenshotUrl: t.screenshotUrl 
             }));
             setTrades(formattedData);
@@ -161,37 +168,49 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } catch (err) { console.warn('Strategy fetch error', err); }
   };
 
-  const fetchCategoriesSupabase = async () => {
+  // --- Tag Fetch ---
+  const fetchTagCategoriesSupabase = async () => {
       try {
-          // Using 'tag_categories' table
           const { data, error } = await supabase.from('tag_categories').select('*');
           if (error) throw error;
           if (data) {
-              setCategories(data.map((c: any) => ({ ...c, id: String(c.id) })));
+              setTagCategories(data.map((c: any) => ({ ...c, id: String(c.id) })));
           }
-      } catch (err) { console.warn('Categories fetch error', err); }
+      } catch (err) { console.warn('Tag Cat fetch error', err); }
   };
 
   const fetchTagsSupabase = async () => {
       try {
-          // Using 'tags' table, need to map category_id to camelCase categoryId
+          // Table renamed to 'tags'
           const { data, error } = await supabase.from('tags').select('*');
           if (error) throw error;
           if (data) {
-              setTags(data.map((t: any) => ({ 
-                  id: String(t.id), 
-                  name: t.name, 
-                  categoryId: t.category_id 
+              setTags(data.map((i: any) => ({ 
+                  id: String(i.id), name: i.name, categoryId: i.category_id 
               })));
           }
-      } catch (err) { console.warn('Tags fetch error', err); }
+      } catch (err) { console.warn('Tag fetch error', err); }
   };
+
 
   // --- Trade CRUD ---
 
   const addTrade = useCallback(async (trade: Trade) => {
     if (isSupabaseConfigured) {
-        const dbPayload = { ...trade, tags: trade.tags || [] };
+        // Prepare payload
+        const { tags: tradeTags, ...tradeData } = trade;
+        
+        const dbPayload: any = { 
+            ...tradeData, 
+            tags: tradeTags || [] 
+        };
+        
+        // Remove purely frontend calculated metrics if they exist in the object
+        delete dbPayload.netPnL;
+        delete dbPayload.rMultiple;
+        delete dbPayload.mfe;
+        delete dbPayload.mae;
+
         const { data, error } = await supabase.from('trades').insert([dbPayload]).select();
         
         if (error) throw new Error(error.message || 'Failed to add trade');
@@ -207,7 +226,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } else {
         setTrades((prev) => {
             const newTrades = [trade, ...prev];
-            saveLocalTrades(newTrades);
+            saveLocal(LS_TRADES, newTrades);
             return newTrades;
         });
     }
@@ -215,14 +234,26 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateTrade = useCallback(async (updatedTrade: Trade) => {
     if (isSupabaseConfigured) {
-        const dbPayload = { ...updatedTrade, tags: updatedTrade.tags || [] };
+        const { tags: tradeTags, ...tradeData } = updatedTrade;
+        
+        const dbPayload: any = { 
+            ...tradeData, 
+            tags: tradeTags || [] 
+        };
+
+        // Remove purely frontend calculated metrics if they exist in the object
+        delete dbPayload.netPnL;
+        delete dbPayload.rMultiple;
+        delete dbPayload.mfe;
+        delete dbPayload.mae;
+
         const { error } = await supabase.from('trades').update(dbPayload).eq('id', updatedTrade.id);
         if (error) throw new Error(error.message);
         setTrades((prev) => prev.map((t) => (t.id === updatedTrade.id ? updatedTrade : t)));
     } else {
         setTrades((prev) => {
             const newTrades = prev.map((t) => (t.id === updatedTrade.id ? updatedTrade : t));
-            saveLocalTrades(newTrades);
+            saveLocal(LS_TRADES, newTrades);
             return newTrades;
         });
     }
@@ -239,7 +270,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setTrades(previousTrades);
         }
     } else {
-        saveLocalTrades(previousTrades.filter((t) => t.id !== id));
+        saveLocal(LS_TRADES, previousTrades.filter((t) => t.id !== id));
     }
   }, [trades]);
 
@@ -252,7 +283,11 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (error) alert('Error: ' + error.message);
           else if (data) setStrategies(prev => [...prev, { ...data[0], id: String(data[0].id) }]);
       } else {
-          setStrategies(prev => [...prev, strategy]);
+          setStrategies(prev => {
+              const next = [...prev, strategy];
+              saveLocal(LS_STRATEGIES, next);
+              return next;
+          });
       }
   }, []);
 
@@ -264,7 +299,11 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (error) alert('Error: ' + error.message);
           else setStrategies(prev => prev.map(s => s.id === strategy.id ? strategy : s));
       } else {
-          setStrategies(prev => prev.map(s => s.id === strategy.id ? strategy : s));
+          setStrategies(prev => {
+              const next = prev.map(s => s.id === strategy.id ? strategy : s);
+              saveLocal(LS_STRATEGIES, next);
+              return next;
+          });
       }
   }, []);
 
@@ -274,88 +313,138 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (error) alert('Error: ' + error.message);
           else setStrategies(prev => prev.filter(s => s.id !== id));
       } else {
-          setStrategies(prev => prev.filter(s => s.id !== id));
+          setStrategies(prev => {
+              const next = prev.filter(s => s.id !== id);
+              saveLocal(LS_STRATEGIES, next);
+              return next;
+          });
       }
   }, []);
 
-  // --- Tag Category CRUD (Supabase) ---
-  const addCategory = useCallback(async (category: TagCategory) => {
+
+  // --- NEW TAG SYSTEM CRUD ---
+
+  const addTagCategory = useCallback(async (cat: TagCategory) => {
       if (isSupabaseConfigured) {
           const { data, error } = await supabase.from('tag_categories').insert([{
-              name: category.name, color: category.color
+              name: cat.name, color: cat.color
           }]).select();
-          
-          if (error) {
-              console.error(error);
-              alert('Error adding category: ' + error.message);
-          } else if (data) {
-              const newCat = { ...data[0], id: String(data[0].id) };
-              setCategories(prev => [...prev, newCat]);
+          if (error) { alert(error.message); return; }
+          if (data) {
+              setTagCategories(prev => [...prev, { ...data[0], id: String(data[0].id) }]);
           }
       } else {
-          setCategories(prev => [...prev, category]);
+          setTagCategories(prev => {
+              const next = [...prev, cat];
+              saveLocal(LS_TAG_CATS, next);
+              return next;
+          });
       }
   }, []);
 
-  const deleteCategory = useCallback(async (id: string) => {
-      if (isSupabaseConfigured) {
-          // Optimistically update UI first to feel snappy
-          const prevCats = [...categories];
-          const prevTags = [...tags];
-          setCategories(prev => prev.filter(c => c.id !== id));
-          setTags(prev => prev.filter(t => t.categoryId !== id));
+  /**
+   * DELETE TAG CATEGORY (MANUAL CASCADE)
+   */
+  const deleteTagCategory = useCallback(async (id: string) => {
+      const prevCats = [...tagCategories];
+      const prevItems = [...tags];
 
-          const { error } = await supabase.from('tag_categories').delete().eq('id', id);
-          
-          if (error) {
-              console.error(error);
-              alert('Error deleting category: ' + error.message);
-              // Revert on error
-              setCategories(prevCats);
-              setTags(prevTags);
+      // Optimistic UI update
+      setTagCategories(prev => prev.filter(c => c.id !== id));
+      setTags(prev => prev.filter(i => i.categoryId !== id));
+
+      if (isSupabaseConfigured) {
+          try {
+              // 1. Delete Items First (Manual Cascade)
+              const { error: itemError } = await supabase
+                  .from('tags')
+                  .delete()
+                  .eq('category_id', id);
+
+              if (itemError) {
+                  console.error("Failed to delete tags:", itemError);
+                  throw new Error(`無法刪除子項目 (Tags): ${itemError.message}`);
+              }
+
+              // 2. Delete Category
+              const { error: catError } = await supabase
+                  .from('tag_categories')
+                  .delete()
+                  .eq('id', id);
+
+              if (catError) {
+                   console.error("Failed to delete category:", catError);
+                   throw new Error(`無法刪除類別 (Tag Category): ${catError.message}`);
+              }
+
+              // Success
+              await Promise.all([fetchTagCategoriesSupabase(), fetchTagsSupabase()]);
+
+          } catch (err: any) {
+              console.error("Delete Category Failed:", err);
+              alert(`刪除失敗: ${err.message || JSON.stringify(err)}.\n請檢查資料庫 RLS 設定。`);
+              
+              // Rollback
+              setTagCategories(prevCats);
+              setTags(prevItems);
+              await fetchTagCategoriesSupabase();
+              await fetchTagsSupabase();
           }
       } else {
-          setCategories(prev => prev.filter(c => c.id !== id));
-          setTags(prev => prev.filter(t => t.categoryId !== id));
+          const nextCats = tagCategories.filter(c => c.id !== id);
+          const nextItems = tags.filter(i => i.categoryId !== id);
+          saveLocal(LS_TAG_CATS, nextCats);
+          saveLocal(LS_TAGS, nextItems);
       }
-  }, [categories, tags]);
+  }, [tagCategories, tags]);
 
-  // --- Tag CRUD (Supabase) ---
   const addTag = useCallback(async (tag: Tag) => {
       if (isSupabaseConfigured) {
           const { data, error } = await supabase.from('tags').insert([{
               name: tag.name, category_id: tag.categoryId
           }]).select();
-
-          if (error) {
-             console.error(error);
-             alert('Error adding tag: ' + error.message);
-          } else if (data) {
-              const newTag = { id: String(data[0].id), name: data[0].name, categoryId: data[0].category_id };
-              setTags(prev => [...prev, newTag]);
+          if (error) { alert(error.message); return; }
+          if (data) {
+              setTags(prev => [...prev, { id: String(data[0].id), name: data[0].name, categoryId: data[0].category_id }]);
           }
       } else {
-          setTags(prev => [...prev, tag]);
+          setTags(prev => {
+              const next = [...prev, tag];
+              saveLocal(LS_TAGS, next);
+              return next;
+          });
       }
   }, []);
 
   const deleteTag = useCallback(async (id: string) => {
+      const prevItems = [...tags];
+      setTags(prev => prev.filter(i => i.id !== id));
+      
       if (isSupabaseConfigured) {
-          const { error } = await supabase.from('tags').delete().eq('id', id);
-          if (error) alert('Error deleting tag: ' + error.message);
-          else setTags(prev => prev.filter(t => t.id !== id));
+          try {
+              const { error } = await supabase.from('tags').delete().eq('id', id);
+              if (error) throw error;
+          } catch(err: any) { 
+              alert(err.message); 
+              setTags(prevItems); // Rollback
+              fetchTagsSupabase(); 
+          }
       } else {
-          setTags(prev => prev.filter(t => t.id !== id));
+          const next = tags.filter(i => i.id !== id);
+          saveLocal(LS_TAGS, next);
       }
-  }, []);
+  }, [tags]);
 
   return (
     <TradeContext.Provider value={{ 
-        trades, filteredTrades, strategies, tags, categories, loading, 
+        trades, filteredTrades, strategies, loading, 
         dateRange, setDateRange, 
         addTrade, updateTrade, deleteTrade, 
         addStrategy, updateStrategy, deleteStrategy,
-        addCategory, deleteCategory, addTag, deleteTag
+        // Tag System
+        tagCategories, tags,
+        addTagCategory, deleteTagCategory,
+        addTag, deleteTag
     }}>
       {children}
     </TradeContext.Provider>

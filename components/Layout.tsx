@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, PieChart, FilePlus2, Database, Filter, Calendar as CalendarIcon, BookMarked } from 'lucide-react';
+import { LayoutDashboard, BookOpen, PieChart, FilePlus2, Database, Filter, Calendar as CalendarIcon, BookMarked, Tag as TagIcon } from 'lucide-react';
 import { useTrades } from '../contexts/TradeContext';
 import { DateRangePicker } from './DateRangePicker';
 import { format, isSameDay } from 'date-fns';
@@ -8,6 +8,7 @@ import { format, isSameDay } from 'date-fns';
 interface LayoutProps {
   children: React.ReactNode;
   onOpenAddModal: () => void;
+  onOpenTagManager: () => void;
 }
 
 const SidebarItem = ({ to, icon: Icon, label }: { to: string, icon: any, label: string }) => {
@@ -28,7 +29,7 @@ const SidebarItem = ({ to, icon: Icon, label }: { to: string, icon: any, label: 
   );
 };
 
-export const Layout: React.FC<LayoutProps> = ({ children, onOpenAddModal }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, onOpenAddModal, onOpenTagManager }) => {
   const { trades, dateRange, setDateRange } = useTrades();
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
@@ -93,13 +94,23 @@ export const Layout: React.FC<LayoutProps> = ({ children, onOpenAddModal }) => {
               </div>
            </div>
 
-           <button 
-             onClick={onOpenAddModal}
-             className="flex items-center gap-2 bg-primary hover:bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-lg shadow-indigo-500/20"
-           >
-             <FilePlus2 size={18} />
-             新增交易
-           </button>
+           <div className="flex items-center gap-3">
+               <button 
+                 onClick={onOpenTagManager}
+                 className="flex items-center gap-2 bg-surface hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-600 px-4 py-2 rounded-md text-sm font-medium transition-colors"
+               >
+                 <TagIcon size={18} />
+                 Manage Tags
+               </button>
+
+               <button 
+                 onClick={onOpenAddModal}
+                 className="flex items-center gap-2 bg-primary hover:bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-lg shadow-indigo-500/20"
+               >
+                 <FilePlus2 size={18} />
+                 新增交易
+               </button>
+           </div>
         </header>
 
         {/* Scrollable Area */}

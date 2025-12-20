@@ -7,16 +7,21 @@ import { Journal } from './pages/Journal';
 import { Reports } from './pages/Reports';
 import { Trades } from './pages/Trades';
 import { StrategyPage } from './pages/Strategy';
-import { StrategyDetails } from './pages/StrategyDetails'; // Import new page
+import { StrategyDetails } from './pages/StrategyDetails'; 
 import { TradeFormModal } from './components/TradeFormModal';
+import { TagManagementModal } from './components/TagManagementModal';
 
 const App: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
 
   return (
     <TradeProvider>
       <HashRouter>
-        <Layout onOpenAddModal={() => setIsModalOpen(true)}>
+        <Layout 
+            onOpenAddModal={() => setIsModalOpen(true)}
+            onOpenTagManager={() => setIsTagManagerOpen(true)}
+        >
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/trades" element={<Trades />} />
@@ -30,6 +35,11 @@ const App: React.FC = () => {
         <TradeFormModal 
           isOpen={isModalOpen} 
           onClose={() => setIsModalOpen(false)} 
+        />
+
+        <TagManagementModal
+            isOpen={isTagManagerOpen}
+            onClose={() => setIsTagManagerOpen(false)}
         />
       </HashRouter>
     </TradeProvider>

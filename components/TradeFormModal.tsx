@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Save, AlertCircle, Calendar, Clock, ChevronDown, ChevronRight, ChevronLeft, Plus, ArrowUp, ArrowDown, Link as LinkIcon, Target, Settings2 } from 'lucide-react';
-import { getDaysInMonth, endOfMonth, format, isSameDay, addMonths } from 'date-fns';
+import { X, Save, AlertCircle, Calendar, Clock, ChevronDown, ChevronRight, ChevronLeft, Plus, ArrowUp, ArrowDown, Link as LinkIcon, Target, Check, Tag as TagIcon } from 'lucide-react';
+import { endOfMonth, format, isSameDay, addMonths } from 'date-fns';
 import startOfMonth from 'date-fns/startOfMonth';
 import subMonths from 'date-fns/subMonths';
 
 import { Trade, TradeDirection, TradeStatus } from '../types';
 import { useTrades } from '../contexts/TradeContext';
-import { TagManagementModal } from './TagManagementModal';
 
 interface TradeFormModalProps {
   isOpen: boolean;
@@ -17,7 +16,7 @@ interface TradeFormModalProps {
 type InputMode = 'price' | 'points';
 
 export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose, initialData }) => {
-  const { strategies, tags, categories, addTrade, updateTrade } = useTrades();
+  const { strategies, tagCategories, tags, addTrade, updateTrade } = useTrades();
   
   const [inputMode, setInputMode] = useState<InputMode>('points');
   
@@ -32,8 +31,10 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
     screenshotUrl: '',
   });
 
-  // Accordion State for Categories
-  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
+  // State for active dropdown category (Replacing Accordion)
+  const [activeTagDropdown, setActiveTagDropdown] = useState<string | null>(null); // For Tag selector
+  
+  const tagDropdownRef = useRef<HTMLDivElement>(null);
 
   // Time state (HH:MM string)
   const [entryTime, setEntryTime] = useState<string>('09:30');
@@ -50,9 +51,6 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
   const [showDirectionPicker, setShowDirectionPicker] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   
-  // Tag Management Modal State
-  const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
-
   // Track time picker selection progress
   const [timeSelection, setTimeSelection] = useState<{hour: boolean, minute: boolean}>({ hour: false, minute: false });
 
@@ -108,10 +106,14 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
         if (statusPickerRef.current && !statusPickerRef.current.contains(event.target as Node)) {
             setShowStatusPicker(false);
         }
+        // Handle dropdown outside click
+        if (activeTagDropdown && tagDropdownRef.current && !tagDropdownRef.current.contains(event.target as Node)) {
+            setActiveTagDropdown(null);
+        }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [activeTagDropdown]);
 
   useEffect(() => {
     if (initialData) {
@@ -202,12 +204,11 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
       }
   }, [formData.initialStopLoss, formData.exitPrice, formData.direction]);
 
-  // Toggle category expansion
-  const toggleCategory = (catId: string) => {
-      setExpandedCategories(prev => 
-          prev.includes(catId) ? prev.filter(id => id !== catId) : [...prev, catId]
-      );
-  };
+  const toggleTagDropdown = (catId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      setActiveTagDropdown(prev => prev === catId ? null : catId);
+  }
 
   // --- Real-time Validation Effect ---
   useEffect(() => {
@@ -395,7 +396,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
       return baseClass;
   };
 
-  const renderDirectionPicker = () => { 
+  const renderDirectionPicker = () => { /* ... existing ... */ 
       return (
         <div 
             className="absolute top-full left-0 mt-2 bg-[#1f2937] border border-slate-600 rounded-xl p-2 shadow-xl z-50 w-full"
@@ -428,7 +429,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
         </div>
     );
   };
-  const renderDirectionInput = () => {
+  const renderDirectionInput = () => { /* ... existing ... */ 
     const containerClass = getInputClass('direction').replace('p-2.5', 'p-1');
     const isLong = formData.direction === TradeDirection.LONG;
     
@@ -446,7 +447,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
         </div>
     );
   };
-  const renderStatusPicker = () => {
+  const renderStatusPicker = () => { /* ... existing ... */ 
       const statuses = Object.values(TradeStatus);
       return (
         <div 
@@ -477,7 +478,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
         </div>
       );
   };
-  const renderStatusInput = () => {
+  const renderStatusInput = () => { /* ... existing ... */ 
       const containerClass = getInputClass('status').replace('p-2.5', 'p-1');
       let statusColor = 'text-white';
       if (formData.status === TradeStatus.WIN || formData.status === TradeStatus.SMALL_WIN) statusColor = 'text-emerald-400 font-bold';
@@ -497,7 +498,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
         </div>
       );
   };
-  const handleDatePartChange = (part: 'y'|'m'|'d', val: string) => {
+  const handleDatePartChange = (part: 'y'|'m'|'d', val: string) => { /* ... existing ... */ 
       const cleanVal = val.replace(/\D/g, '');
       const parts = (formData.entryDate || 'YYYY-MM-DD').split('-');
       const y = parts[0] || '';
@@ -514,7 +515,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
       if (part === 'y' && cleanVal.length === 4) dateRefs.current[1]?.focus();
       if (part === 'm' && cleanVal.length === 2) dateRefs.current[2]?.focus();
   };
-  const renderDateInput = () => {
+  const renderDateInput = () => { /* ... existing ... */ 
       const parts = (formData.entryDate || '').split('-');
       const y = parts[0] || '';
       const m = parts[1] || '';
@@ -534,7 +535,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
               </button>
               <div className="flex items-center flex-1 justify-start">
                   <input 
-                    ref={el => dateRefs.current[0] = el}
+                    ref={el => { dateRefs.current[0] = el; }}
                     className="bg-transparent w-9 text-center focus:outline-none placeholder-slate-600" 
                     placeholder="YYYY" 
                     value={y} 
@@ -542,7 +543,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
                   />
                   <span className="text-slate-500 select-none">-</span>
                   <input 
-                    ref={el => dateRefs.current[1] = el}
+                    ref={el => { dateRefs.current[1] = el; }}
                     className="bg-transparent w-6 text-center focus:outline-none placeholder-slate-600" 
                     placeholder="MM" 
                     value={m} 
@@ -550,7 +551,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
                   />
                   <span className="text-slate-500 select-none">-</span>
                   <input 
-                    ref={el => dateRefs.current[2] = el}
+                    ref={el => { dateRefs.current[2] = el; }}
                     className="bg-transparent w-6 text-center focus:outline-none placeholder-slate-600" 
                     placeholder="DD" 
                     value={d} 
@@ -560,7 +561,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
           </div>
       );
   };
-  const handleTimePartChange = (type: 'entry'|'exit', part: 'h'|'m', val: string) => { 
+  const handleTimePartChange = (type: 'entry'|'exit', part: 'h'|'m', val: string) => { /* ... existing ... */ 
       const cleanVal = val.replace(/\D/g, '');
       const timeStr = type === 'entry' ? entryTime : exitTime;
       const parts = timeStr.split(':');
@@ -579,7 +580,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
           if (part === 'h' && cleanVal.length === 2) timeExitRefs.current[1]?.focus();
       }
   };
-  const renderTimeInput = (type: 'entry' | 'exit') => {
+  const renderTimeInput = (type: 'entry' | 'exit') => { /* ... existing ... */ 
       const timeStr = type === 'entry' ? entryTime : exitTime;
       const parts = timeStr.split(':');
       const h = parts[0] || '';
@@ -603,7 +604,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
                </button>
                <div className="flex items-center flex-1 justify-start">
                     <input 
-                        ref={el => refs.current[0] = el}
+                        ref={el => { refs.current[0] = el; }}
                         className="bg-transparent w-6 text-center focus:outline-none placeholder-slate-600" 
                         placeholder="HH" 
                         value={h} 
@@ -611,7 +612,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
                     />
                     <span className="text-slate-500 select-none px-0.5">:</span>
                     <input 
-                        ref={el => refs.current[1] = el}
+                        ref={el => { refs.current[1] = el; }}
                         className="bg-transparent w-6 text-center focus:outline-none placeholder-slate-600" 
                         placeholder="MM" 
                         value={m} 
@@ -621,7 +622,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
           </div>
       );
   };
-  const renderTimePicker = (type: 'entry' | 'exit') => {
+  const renderTimePicker = (type: 'entry' | 'exit') => { /* ... existing ... */ 
       const hours = Array.from({ length: 24 }, (_, i) => i);
       const minutes = Array.from({ length: 60 }, (_, i) => i); 
 
@@ -706,7 +707,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
           </div>
       );
   };
-  const renderCalendar = () => { 
+  const renderCalendar = () => { /* ... existing ... */ 
      const start = startOfMonth(viewDate);
      const end = endOfMonth(viewDate);
      const startDay = start.getDay();
@@ -918,7 +919,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
                     </div>
                </div>
                
-               {/* Strategy/Tag sections */}
+               {/* Strategy Section */}
                <div>
                   <label className="block text-xs font-medium text-slate-400 mb-1.5">交易策略 (Strategy)</label>
                   <div className="relative">
@@ -930,80 +931,72 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
                   </div>
                </div>
 
+               {/* --- NEW TAG SELECTOR (Renamed from Bag) --- */}
                <div>
-                  <div className="flex justify-between items-center mb-2">
-                     <label className="block text-xs font-medium text-slate-400">標籤 (Tags)</label>
-                     <button 
-                         type="button" 
-                         onClick={() => setIsTagManagerOpen(true)}
-                         className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded transition-colors"
-                     >
-                         <Settings2 size={12} /> Edit
-                     </button>
-                  </div>
-                  
-                  {/* Categorized Tags Display - ACCORDION STYLE */}
-                  <div className="space-y-1 p-2 border border-slate-700/50 rounded-lg bg-slate-800/20 max-h-[220px] overflow-y-auto custom-scrollbar">
-                    {categories.map(cat => {
-                        const catTags = tags.filter(t => t.categoryId === cat.id);
-                        if (catTags.length === 0) return null;
+                  <label className="block text-xs font-medium text-slate-400 mb-2">標籤 (Tags)</label>
+                  <div className="flex flex-wrap gap-2 p-2 border border-slate-700/50 rounded-lg bg-slate-800/20 min-h-[42px] items-start relative">
+                    {tagCategories.map(cat => {
+                        const items = tags.filter(t => t.categoryId === cat.id);
+                        if (items.length === 0) return null;
 
-                        const isExpanded = expandedCategories.includes(cat.id);
-                        const selectedInCat = catTags.filter(t => formData.tags?.includes(t.id)).length;
+                        const selectedInCat = items.filter(t => formData.tags?.includes(t.id));
+                        const isDropdownOpen = activeTagDropdown === cat.id;
                         
                         return (
-                            <div key={cat.id} className="rounded-lg overflow-hidden bg-slate-800/40 border border-slate-700/50">
-                                {/* Header / Trigger */}
-                                <div 
-                                    onClick={() => toggleCategory(cat.id)}
-                                    className={`flex items-center justify-between p-2 cursor-pointer transition-colors ${isExpanded ? 'bg-slate-700/50' : 'hover:bg-slate-700/30'}`}
+                            <div key={cat.id} className="relative inline-block">
+                                <button 
+                                    type="button"
+                                    onClick={(e) => toggleTagDropdown(cat.id, e)}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all text-xs font-medium shadow-sm ${isDropdownOpen ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-800/50 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white'}`}
                                 >
-                                    <div className="flex items-center gap-2">
-                                        <div className={`w-2 h-2 rounded-full ${cat.color}`}></div>
-                                        <span className="text-xs font-bold text-slate-300">{cat.name}</span>
-                                        {selectedInCat > 0 && !isExpanded && (
-                                            <span className="bg-primary text-white text-[10px] px-1.5 rounded-full font-bold">
-                                                {selectedInCat}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <ChevronRight size={14} className={`text-slate-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                                </div>
+                                    <div className={`w-2 h-2 rounded-full ${cat.color}`}></div>
+                                    <span>{cat.name}</span>
+                                    {selectedInCat.length > 0 && (
+                                        <span className="bg-primary text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold -mr-1 shadow">
+                                            {selectedInCat.length}
+                                        </span>
+                                    )}
+                                    <ChevronDown size={10} className={`ml-1 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                                </button>
 
-                                {/* Body / Tags Grid */}
-                                {isExpanded && (
-                                    <div className="p-2 bg-slate-900/20 border-t border-slate-700/30">
-                                        <div className="flex flex-wrap gap-2">
-                                            {catTags.map(tag => (
-                                                <button 
-                                                    key={tag.id} 
-                                                    type="button" 
-                                                    onClick={() => {
-                                                        const currentTags = formData.tags || [];
-                                                        if (currentTags.includes(tag.id)) {
-                                                            setFormData(prev => ({ ...prev, tags: currentTags.filter(t => t !== tag.id) }));
-                                                        } else {
-                                                            setFormData(prev => ({ ...prev, tags: [...currentTags, tag.id] }));
-                                                        }
-                                                    }} 
-                                                    className={`text-xs px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 ${formData.tags?.includes(tag.id) ? `${cat.color} border-transparent text-white font-semibold shadow-sm` : 'bg-transparent border-slate-600 text-slate-400 hover:border-slate-400'}`}
-                                                >
-                                                    {tag.name}
-                                                </button>
-                                            ))}
+                                {isDropdownOpen && (
+                                    <div 
+                                        ref={tagDropdownRef}
+                                        className="absolute top-full left-0 mt-2 min-w-[180px] w-auto max-w-[240px] bg-[#1f2937] border border-slate-600 rounded-xl shadow-2xl z-50 p-2 flex flex-col gap-1"
+                                    >
+                                        <div className="max-h-[200px] overflow-y-auto custom-scrollbar flex flex-col gap-1">
+                                            {items.map(item => {
+                                                const isSelected = formData.tags?.includes(item.id);
+                                                return (
+                                                    <button 
+                                                        key={item.id} 
+                                                        type="button" 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            const currentItems = formData.tags || [];
+                                                            if (currentItems.includes(item.id)) {
+                                                                setFormData(prev => ({ ...prev, tags: currentItems.filter(t => t !== item.id) }));
+                                                            } else {
+                                                                setFormData(prev => ({ ...prev, tags: [...currentItems, item.id] }));
+                                                            }
+                                                        }} 
+                                                        className={`text-left text-xs px-2 py-1.5 rounded flex items-center justify-between transition-colors ${isSelected ? `${cat.color} bg-opacity-20 text-white` : 'text-slate-300 hover:bg-slate-700'}`}
+                                                    >
+                                                        <span>{item.name}</span>
+                                                        {isSelected && <Check size={12} className={cat.color.replace('bg-', 'text-')} />}
+                                                    </button>
+                                                )
+                                            })}
                                         </div>
                                     </div>
                                 )}
                             </div>
                         );
                     })}
-                    {tags.length === 0 && (
-                        <div className="text-center text-xs text-slate-500 py-4 italic">
-                            No tags available. Click "Edit" to create some.
-                        </div>
-                    )}
+                    {tags.length === 0 && <span className="text-xs text-slate-500 italic p-1">No tags available.</span>}
                   </div>
                </div>
+
                 
                {/* Screenshot Section - URL Input Only */}
                <div className="mt-2">
@@ -1042,12 +1035,6 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
              </button>
           </div>
         </form>
-
-        {/* Tag Management Modal Nested */}
-        <TagManagementModal 
-            isOpen={isTagManagerOpen} 
-            onClose={() => setIsTagManagerOpen(false)} 
-        />
       </div>
     </div>
   );

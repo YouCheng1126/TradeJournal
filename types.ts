@@ -13,17 +13,18 @@ export enum TradeDirection {
     SMALL_LOSS = 'Small Loss',
     LOSS = 'Loss',
   }
-  
+
+  // --- TAG SYSTEM (Renamed from Bag) ---
   export interface TagCategory {
-    id: string;
-    name: string;
-    color: string; // Tailwind color class (e.g., 'bg-red-500') or hex
+      id: string;
+      name: string;
+      color: string;
   }
 
   export interface Tag {
-    id: string;
-    name: string;
-    categoryId: string;
+      id: string;
+      name: string;
+      categoryId: string;
   }
   
   export interface Strategy {
@@ -62,7 +63,7 @@ export enum TradeDirection {
   
     // Context
     playbookId?: string; // Kept as playbookId for DB compatibility, but represents Strategy
-    tags: string[]; // Array of Tag IDs
+    tags?: string[]; // Renamed from bagItems: Array of Tag IDs
     notes?: string;
     screenshotUrl?: string;
   
