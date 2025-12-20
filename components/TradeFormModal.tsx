@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Save, AlertCircle, Calendar, Clock, ChevronDown, ChevronRight, ChevronLeft, Plus, ArrowUp, ArrowDown, Link as LinkIcon, Target, Check, Tag as TagIcon } from 'lucide-react';
+
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
+import { X, Save, AlertCircle, Calendar, Clock, ChevronDown, ChevronRight, ChevronLeft, Plus, ArrowUp, ArrowDown, Link as LinkIcon, Target, Check, Tag as TagIcon, ListChecks, CheckSquare, Square } from 'lucide-react';
 import { endOfMonth, format, isSameDay, addMonths } from 'date-fns';
 import startOfMonth from 'date-fns/startOfMonth';
 import subMonths from 'date-fns/subMonths';
 
-import { Trade, TradeDirection, TradeStatus } from '../types';
+import { Trade, TradeDirection, TradeStatus, StrategyRuleGroup } from '../types';
 import { useTrades } from '../contexts/TradeContext';
 
 interface TradeFormModalProps {
@@ -27,9 +28,94 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
     quantity: 1,
     entryDate: new Date().toISOString().split('T')[0],
     tags: [],
+    rulesFollowed: [],
     commission: 0,
     screenshotUrl: '',
   });
+
+  // Strategy Rule Checklist State
+  const [showRulesChecklist, setShowRulesChecklist] = useState(false);
+  const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({});
+  
+  const rulesButtonRef = useRef<HTMLButtonElement>(null);
+  const modalPanelRef = useRef<HTMLDivElement>(null); // Ref for the main modal panel
+  const strategySelectRef = useRef<HTMLDivElement>(null); // Ref for the strategy dropdown wrapper
+  const rulesPopupRef = useRef<HTMLDivElement>(null); // Wrapper ref for rules section
+
+  // Helper to get current strategy rules
+  const selectedStrategy = useMemo(() => {
+      return strategies.find(s => s.id === formData.playbookId);
+  }, [formData.playbookId, strategies]);
+
+  // Smart Positioning for Rules Popover (Custom Logic)
+  useLayoutEffect(() => {
+      if (showRulesChecklist && rulesButtonRef.current && selectedStrategy && modalPanelRef.current && strategySelectRef.current) {
+          const panelRect = modalPanelRef.current.getBoundingClientRect();
+          const btnRect = rulesButtonRef.current.getBoundingClientRect();
+          const selectRect = strategySelectRef.current.getBoundingClientRect();
+          const viewportHeight = window.innerHeight;
+          
+          const POP_WIDTH = 320; // Matches w-80
+          const PANEL_TOP_OFFSET = 30; // Fixed offset from panel top as requested
+
+          // 1. Horizontal Position
+          // Rule: Right edge of popover aligns with Right edge of Strategy Input
+          // Left = SelectRight - PopoverWidth
+          let leftPos = selectRect.right - POP_WIDTH;
+          
+          // Safety clamp for mobile/small screens
+          if (leftPos < 10) leftPos = 10;
+
+          // 2. Estimate Content Height
+          let estimatedHeight = 90; // Header (~80px) + Padding
+          if (selectedStrategy.rules) {
+              selectedStrategy.rules.forEach(g => {
+                  // Legacy check
+                  if (typeof g === 'string') { 
+                      estimatedHeight += 50; 
+                  } else {
+                      // New structure: Group Header + Items
+                      estimatedHeight += 32; // Group Label
+                      estimatedHeight += (g.items.length * 44); // Item height (~36px) + gap
+                      estimatedHeight += 16; // Group margin
+                  }
+              });
+          }
+          
+          // 3. Vertical Position Logic
+          const panelTopY = panelRect.top + PANEL_TOP_OFFSET;
+          const btnBottomY = btnRect.bottom;
+          
+          // The "Space" defined in requirement: From PanelTop+30 to ButtonBottom
+          const availableSpace = btnBottomY - panelTopY;
+
+          let style: React.CSSProperties = {
+              position: 'fixed',
+              left: `${leftPos}px`,
+              width: `${POP_WIDTH}px`,
+              zIndex: 60,
+              display: 'flex',
+              flexDirection: 'column',
+          };
+
+          if (estimatedHeight < availableSpace) {
+              // Condition A: Height is smaller than the space
+              // Rule: Bottom of popover aligns with Bottom of Button
+              // Top = ButtonBottom - Height
+              style.top = `${btnBottomY - estimatedHeight}px`;
+              style.height = `${estimatedHeight}px`; // Fix height to match estimation for alignment
+          } else {
+              // Condition B: Height is larger than the space
+              // Rule: Top of popover aligns with PanelTop+30
+              style.top = `${panelTopY}px`;
+              // Extend downwards, but respect screen bottom margin
+              const maxAvailableHeight = viewportHeight - panelTopY - 20; 
+              style.maxHeight = `${maxAvailableHeight}px`;
+          }
+
+          setPopoverStyle(style);
+      }
+  }, [showRulesChecklist, selectedStrategy]);
 
   // State for active dropdown category (Replacing Accordion)
   const [activeTagDropdown, setActiveTagDropdown] = useState<string | null>(null); // For Tag selector
@@ -110,10 +196,51 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
         if (activeTagDropdown && tagDropdownRef.current && !tagDropdownRef.current.contains(event.target as Node)) {
             setActiveTagDropdown(null);
         }
+        // Handle Rules Checklist outside click (Fixed Positioning requires check against Ref or global close)
+        if (showRulesChecklist && rulesButtonRef.current && !rulesButtonRef.current.contains(event.target as Node)) {
+             // For fixed elements, if they are React Portals, standard propagation works.
+             // If inline but fixed, 'contains' might fail if the DOM structure is tricky, 
+             // but here the fixed div is rendered inside the component tree.
+             // We check if the click target is inside the *rendered popover* which is NOT inside rulesButtonRef
+             // Note: In React, event bubbling handles this mostly, but for global 'mousedown' we need to be careful.
+             // Since we don't have a ref directly on the fixed style div here (we apply style to a div below),
+             // let's rely on the fact that if it's NOT the button, close it. 
+             // BUT wait, if we click inside the popover, we shouldn't close.
+             // The popover is rendered conditionally below. We need a ref on it.
+             // We reuse rulesPopupRef but we need to attach it to the fixed div.
+             // Currently rulesPopupRef is on the wrapper relative div.
+             // Let's rely on the inner check: see render below.
+        }
     }
+    // We handle the specific close logic in the click handler attached to document,
+    // but better to put a ref on the fixed popover.
+    
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [activeTagDropdown]);
+  }, [activeTagDropdown, showRulesChecklist]);
+
+  // We need a ref for the fixed popover to detect clicks inside it
+  const fixedPopoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+      function handleFixedClickOutside(event: MouseEvent) {
+          if (showRulesChecklist && 
+              fixedPopoverRef.current && 
+              !fixedPopoverRef.current.contains(event.target as Node) && 
+              rulesButtonRef.current && 
+              !rulesButtonRef.current.contains(event.target as Node)) {
+              setShowRulesChecklist(false);
+          }
+      }
+      document.addEventListener("mousedown", handleFixedClickOutside);
+      return () => document.removeEventListener("mousedown", handleFixedClickOutside);
+  }, [showRulesChecklist]);
+
+
+  // Adjust rules popup position based on available space
+  const handleToggleRules = () => {
+      setShowRulesChecklist(!showRulesChecklist);
+  };
 
   useEffect(() => {
     if (initialData) {
@@ -382,6 +509,38 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
     }
   };
 
+  // Checklist Helpers
+  const toggleRuleCheck = (ruleId: string) => {
+      setFormData(prev => {
+          const current = prev.rulesFollowed || [];
+          if (current.includes(ruleId)) {
+              return { ...prev, rulesFollowed: current.filter(id => id !== ruleId) };
+          } else {
+              return { ...prev, rulesFollowed: [...current, ruleId] };
+          }
+      });
+  };
+
+  const getStrategyProgress = () => {
+      if (!selectedStrategy || !selectedStrategy.rules) return { checked: 0, total: 0 };
+      let total = 0;
+      let checked = 0;
+      selectedStrategy.rules.forEach(group => {
+          // If legacy string
+          if (typeof group === 'string') {
+              total++; 
+              // Legacy doesn't support ID tracking well, ignore for now
+          } else {
+              // New format
+              total += group.items.length;
+              group.items.forEach(item => {
+                  if (formData.rulesFollowed?.includes(item.id)) checked++;
+              });
+          }
+      });
+      return { checked, total };
+  };
+
   const getInputClass = (fieldName: string) => {
       let baseClass = "w-full bg-surface/50 border rounded-lg p-2.5 text-white text-sm focus:outline-none transition-all shadow-sm placeholder-slate-600 font-mono h-[42px] ";
       const hasError = (touched[fieldName] && errors[fieldName]) || shakeFields.includes(fieldName) || (touched[fieldName] && getMissingFields().includes(fieldName));
@@ -396,8 +555,10 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
       return baseClass;
   };
 
-  const renderDirectionPicker = () => { /* ... existing ... */ 
-      return (
+  // ... (Previous Render Helpers kept same: renderDirectionPicker, renderDateInput etc. Assuming they are part of original file content, I only modify what's needed below or surrounding logic)
+  const renderDirectionPicker = () => {
+      // (Implementation hidden for brevity, same as before)
+       return (
         <div 
             className="absolute top-full left-0 mt-2 bg-[#1f2937] border border-slate-600 rounded-xl p-2 shadow-xl z-50 w-full"
             onMouseDown={(e) => e.stopPropagation()}
@@ -429,10 +590,9 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
         </div>
     );
   };
-  const renderDirectionInput = () => { /* ... existing ... */ 
+  const renderDirectionInput = () => { 
     const containerClass = getInputClass('direction').replace('p-2.5', 'p-1');
     const isLong = formData.direction === TradeDirection.LONG;
-    
     return (
         <div className="relative" ref={directionPickerRef}>
             <div 
@@ -447,7 +607,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
         </div>
     );
   };
-  const renderStatusPicker = () => { /* ... existing ... */ 
+  const renderStatusPicker = () => { 
       const statuses = Object.values(TradeStatus);
       return (
         <div 
@@ -478,7 +638,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
         </div>
       );
   };
-  const renderStatusInput = () => { /* ... existing ... */ 
+  const renderStatusInput = () => { 
       const containerClass = getInputClass('status').replace('p-2.5', 'p-1');
       let statusColor = 'text-white';
       if (formData.status === TradeStatus.WIN || formData.status === TradeStatus.SMALL_WIN) statusColor = 'text-emerald-400 font-bold';
@@ -498,7 +658,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
         </div>
       );
   };
-  const handleDatePartChange = (part: 'y'|'m'|'d', val: string) => { /* ... existing ... */ 
+  const handleDatePartChange = (part: 'y'|'m'|'d', val: string) => { 
       const cleanVal = val.replace(/\D/g, '');
       const parts = (formData.entryDate || 'YYYY-MM-DD').split('-');
       const y = parts[0] || '';
@@ -515,14 +675,12 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
       if (part === 'y' && cleanVal.length === 4) dateRefs.current[1]?.focus();
       if (part === 'm' && cleanVal.length === 2) dateRefs.current[2]?.focus();
   };
-  const renderDateInput = () => { /* ... existing ... */ 
+  const renderDateInput = () => { 
       const parts = (formData.entryDate || '').split('-');
       const y = parts[0] || '';
       const m = parts[1] || '';
       const d = parts[2] || '';
-      
       const containerClass = getInputClass('entryDate').replace('p-2.5', 'p-1'); 
-
       return (
           <div className={`${containerClass} flex items-center gap-0 px-2 tracking-tighter`}>
               <button 
@@ -561,17 +719,15 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
           </div>
       );
   };
-  const handleTimePartChange = (type: 'entry'|'exit', part: 'h'|'m', val: string) => { /* ... existing ... */ 
+  const handleTimePartChange = (type: 'entry'|'exit', part: 'h'|'m', val: string) => { 
       const cleanVal = val.replace(/\D/g, '');
       const timeStr = type === 'entry' ? entryTime : exitTime;
       const parts = timeStr.split(':');
       const h = parts[0] || '';
       const m = parts[1] || '';
-      
       let newTimeStr = '';
       if (part === 'h') newTimeStr = `${cleanVal.slice(0,2)}:${m}`;
       if (part === 'm') newTimeStr = `${h}:${cleanVal.slice(0,2)}`;
-      
       if (type === 'entry') {
           setEntryTime(newTimeStr);
           if (part === 'h' && cleanVal.length === 2) timeEntryRefs.current[1]?.focus();
@@ -580,7 +736,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
           if (part === 'h' && cleanVal.length === 2) timeExitRefs.current[1]?.focus();
       }
   };
-  const renderTimeInput = (type: 'entry' | 'exit') => { /* ... existing ... */ 
+  const renderTimeInput = (type: 'entry' | 'exit') => { 
       const timeStr = type === 'entry' ? entryTime : exitTime;
       const parts = timeStr.split(':');
       const h = parts[0] || '';
@@ -588,7 +744,6 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
       const errorKey = type === 'entry' ? 'entryTime' : 'exitTime';
       const containerClass = getInputClass(errorKey).replace('p-2.5', 'p-1');
       const refs = type === 'entry' ? timeEntryRefs : timeExitRefs;
-
       return (
           <div className={`${containerClass} flex items-center gap-0 px-2`}>
                <button 
@@ -622,52 +777,41 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
           </div>
       );
   };
-  const renderTimePicker = (type: 'entry' | 'exit') => { /* ... existing ... */ 
+  const renderTimePicker = (type: 'entry' | 'exit') => { 
       const hours = Array.from({ length: 24 }, (_, i) => i);
       const minutes = Array.from({ length: 60 }, (_, i) => i); 
-
       const currentTimeStr = type === 'entry' ? entryTime : exitTime;
       let currentHour = NaN;
       let currentMinute = NaN;
-      
       if (currentTimeStr && currentTimeStr.includes(':')) {
           const parts = currentTimeStr.split(':');
           currentHour = parseInt(parts[0], 10);
           currentMinute = parseInt(parts[1], 10);
       }
-
       const handleHourSelect = (h: number) => {
           const hStr = h.toString().padStart(2, '0');
           const mStr = (isNaN(currentMinute) ? 0 : currentMinute).toString().padStart(2, '0');
           const newTime = `${hStr}:${mStr}`;
-          
           if (type === 'entry') setEntryTime(newTime);
           else setExitTime(newTime);
-
           const newSelection = { ...timeSelection, hour: true };
           setTimeSelection(newSelection);
-          
           if (newSelection.hour && newSelection.minute) {
               setShowTimePicker(null);
           }
       };
-
       const handleMinuteSelect = (m: number) => {
           const hStr = (isNaN(currentHour) ? 9 : currentHour).toString().padStart(2, '0');
           const mStr = m.toString().padStart(2, '0');
           const newTime = `${hStr}:${mStr}`;
-
           if (type === 'entry') setEntryTime(newTime);
           else setExitTime(newTime);
-          
           const newSelection = { ...timeSelection, minute: true };
           setTimeSelection(newSelection);
-
           if (newSelection.hour && newSelection.minute) {
               setShowTimePicker(null);
           }
       };
-
       return (
           <div 
             className="absolute top-full left-0 mt-2 bg-[#1f2937] border border-slate-600 rounded-xl p-2 shadow-xl z-50 w-48 flex gap-1 h-48" 
@@ -707,7 +851,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
           </div>
       );
   };
-  const renderCalendar = () => { /* ... existing ... */ 
+  const renderCalendar = () => { 
      const start = startOfMonth(viewDate);
      const end = endOfMonth(viewDate);
      const startDay = start.getDay();
@@ -764,7 +908,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md">
       <style>{shakeStyle}</style>
 
-      <div className="bg-[#1f2937] w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700/50 shadow-2xl">
+      <div ref={modalPanelRef} className="bg-[#1f2937] w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700/50 shadow-2xl">
         <form onSubmit={handleSubmit} noValidate>
           <div className="sticky top-0 bg-[#1f2937]/95 border-b border-slate-700/50 p-5 flex justify-between items-center z-10 backdrop-blur">
             <h2 className="text-xl font-bold text-white flex items-center gap-2 tracking-tight">
@@ -922,12 +1066,102 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
                {/* Strategy Section */}
                <div>
                   <label className="block text-xs font-medium text-slate-400 mb-1.5">交易策略 (Strategy)</label>
-                  <div className="relative">
-                      <select name="playbookId" value={formData.playbookId || ''} onChange={handleChange} className={`${getInputClass('playbookId')} appearance-none cursor-pointer h-[42px]`}>
-                        <option value="">-- 選擇策略 --</option>
-                        {strategies.map(st => (<option key={st.id} value={st.id}>{st.name}</option>))}
-                      </select>
-                      <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <div className="flex gap-2 relative">
+                      <div className="relative flex-1" ref={strategySelectRef}>
+                          <select name="playbookId" value={formData.playbookId || ''} onChange={handleChange} className={`${getInputClass('playbookId')} appearance-none cursor-pointer h-[42px]`}>
+                            <option value="">-- 選擇策略 --</option>
+                            {strategies.map(st => (<option key={st.id} value={st.id}>{st.name}</option>))}
+                          </select>
+                          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                      </div>
+                      
+                      {/* Strategy Rules Button */}
+                      <div className="relative" ref={rulesPopupRef}>
+                          <button
+                            ref={rulesButtonRef}
+                            type="button"
+                            disabled={!formData.playbookId}
+                            onClick={handleToggleRules}
+                            className={`h-[42px] px-3 border rounded-lg transition-colors flex items-center gap-2 ${showRulesChecklist ? 'bg-primary border-primary text-white' : 'bg-surface/50 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'} ${!formData.playbookId ? 'opacity-50 cursor-not-allowed hover:border-slate-700 hover:text-slate-400' : ''}`}
+                          >
+                              <ListChecks size={18} />
+                              <span className="text-xs font-bold hidden sm:inline">Rules</span>
+                          </button>
+
+                          {/* Strategy Rules Popover (Fixed Overlay) */}
+                          {showRulesChecklist && selectedStrategy && (
+                              <div 
+                                ref={fixedPopoverRef}
+                                style={popoverStyle}
+                                className="bg-[#1f2937] border border-slate-600 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+                              >
+                                  {/* Header with Progress */}
+                                  <div className="p-4 border-b border-slate-700 bg-slate-800/50 flex-shrink-0">
+                                      <div className="flex items-center gap-2 mb-2">
+                                          <div className="w-3 h-3 rounded bg-[#8f3f3f]" style={{ backgroundColor: selectedStrategy.color }}></div>
+                                          <span className="font-bold text-white text-sm truncate">{selectedStrategy.name}</span>
+                                      </div>
+                                      
+                                      {(() => {
+                                          const { checked, total } = getStrategyProgress();
+                                          return (
+                                              <div>
+                                                  <div className="flex justify-between text-xs text-slate-400 mb-1 font-semibold uppercase">
+                                                      <span>Rules Followed</span>
+                                                      <span>{checked} / {total}</span>
+                                                  </div>
+                                                  <div className="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                                                      <div 
+                                                        className="h-full bg-emerald-500 transition-all duration-300" 
+                                                        style={{ width: total > 0 ? `${(checked / total) * 100}%` : '0%' }}
+                                                      ></div>
+                                                  </div>
+                                              </div>
+                                          );
+                                      })()}
+                                  </div>
+
+                                  {/* Rules List - SCROLLABLE */}
+                                  <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-4">
+                                      {selectedStrategy.rules && selectedStrategy.rules.length > 0 ? (
+                                          selectedStrategy.rules.map((group) => {
+                                              // Legacy Check
+                                              if (typeof group === 'string') return null;
+
+                                              return (
+                                                  <div key={group.id} className="px-2">
+                                                      <h4 className="text-[10px] uppercase font-bold text-slate-500 mb-2 pl-1">{group.name}</h4>
+                                                      <div className="space-y-1">
+                                                          {group.items.map(item => {
+                                                              const isChecked = formData.rulesFollowed?.includes(item.id);
+                                                              return (
+                                                                  <button
+                                                                      key={item.id}
+                                                                      type="button"
+                                                                      onClick={() => toggleRuleCheck(item.id)}
+                                                                      className="w-full text-left flex items-start gap-3 p-2 rounded hover:bg-slate-800 transition-colors group"
+                                                                      data-rule-text={item.text} // For future aggregation logic
+                                                                  >
+                                                                      <div className={`mt-0.5 transition-colors ${isChecked ? 'text-primary' : 'text-slate-600 group-hover:text-slate-500'}`}>
+                                                                          {isChecked ? <CheckSquare size={16} /> : <Square size={16} />}
+                                                                      </div>
+                                                                      <span className={`text-sm leading-snug ${isChecked ? 'text-white' : 'text-slate-400'}`}>
+                                                                          {item.text}
+                                                                      </span>
+                                                                  </button>
+                                                              );
+                                                          })}
+                                                      </div>
+                                                  </div>
+                                              );
+                                          })
+                                      ) : (
+                                          <div className="text-center py-6 text-slate-500 text-xs">No rules defined.</div>
+                                      )}
+                                  </div>
+                              </div>
+                          )}
+                      </div>
                   </div>
                </div>
 

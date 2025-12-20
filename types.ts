@@ -27,11 +27,24 @@ export enum TradeDirection {
       categoryId: string;
   }
   
+  // --- New Rule Structure ---
+  export interface RuleItem {
+      id: string;
+      text: string;
+  }
+
+  export interface StrategyRuleGroup {
+      id: string;
+      name: string;
+      items: RuleItem[];
+  }
+
   export interface Strategy {
     id: string;
     name: string;
     description?: string;
-    rules?: string[]; // Array of rules/checklist items
+    // Updated: rules is now an array of groups, or undefined/empty array for legacy/new
+    rules?: StrategyRuleGroup[]; 
     color?: string;
   }
   
@@ -63,6 +76,7 @@ export enum TradeDirection {
   
     // Context
     playbookId?: string; // Kept as playbookId for DB compatibility, but represents Strategy
+    rulesFollowed?: string[]; // New: Array of Rule Item IDs that were checked
     tags?: string[]; // Renamed from bagItems: Array of Tag IDs
     notes?: string;
     screenshotUrl?: string;

@@ -47,8 +47,43 @@ export const useTrades = () => {
 };
 
 const DUMMY_STRATEGIES: Strategy[] = [
-  { id: 'pb1', name: 'Gap Fill', description: 'Trading the gap fill on open.', rules: ['Gap > 2%', 'Volume > 100k'] },
-  { id: 'pb2', name: 'Bull Flag Breakout', description: 'Classic continuation pattern.', rules: ['Strong uptrend', 'Tight consolidation'] },
+  { 
+      id: 'pb1', 
+      name: 'Gap Fill', 
+      description: 'Trading the gap fill on open.', 
+      rules: [
+          {
+              id: 'g1',
+              name: 'Entry criteria',
+              items: [
+                  { id: 'r1', text: 'Gap > 2%' },
+                  { id: 'r2', text: 'Volume > 100k' }
+              ]
+          },
+          {
+              id: 'g2',
+              name: 'Exit criteria',
+              items: [
+                  { id: 'r3', text: 'Gap filled' }
+              ]
+          }
+      ] 
+  },
+  { 
+      id: 'pb2', 
+      name: 'Bull Flag Breakout', 
+      description: 'Classic continuation pattern.', 
+      rules: [
+          {
+              id: 'g1',
+              name: 'Entry criteria',
+              items: [
+                  { id: 'r1', text: 'Strong uptrend' },
+                  { id: 'r2', text: 'Tight consolidation' }
+              ]
+          }
+      ] 
+  },
 ];
 
 // Local Storage Keys
@@ -149,6 +184,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 ...t,
                 id: String(t.id),
                 tags: t.tags || [], // Renamed column
+                rulesFollowed: t.rulesFollowed || [], // Explicitly handle missing/null field
                 screenshotUrl: t.screenshotUrl 
             }));
             setTrades(formattedData);
@@ -163,7 +199,12 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const { data, error } = await supabase.from('strategies').select('*');
           if (error) throw error;
           if (data) {
-              setStrategies(data.map((s: any) => ({ ...s, id: String(s.id), rules: s.rules || [] })));
+              // Ensure rules is parsed if it's stored as JSONB, or default to []
+              setStrategies(data.map((s: any) => ({ 
+                  ...s, 
+                  id: String(s.id), 
+                  rules: s.rules || [] 
+              })));
           }
       } catch (err) { console.warn('Strategy fetch error', err); }
   };
@@ -198,11 +239,12 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addTrade = useCallback(async (trade: Trade) => {
     if (isSupabaseConfigured) {
         // Prepare payload
-        const { tags: tradeTags, ...tradeData } = trade;
+        const { tags: tradeTags, rulesFollowed, ...tradeData } = trade;
         
         const dbPayload: any = { 
             ...tradeData, 
-            tags: tradeTags || [] 
+            tags: tradeTags || [],
+            rulesFollowed: rulesFollowed || [] 
         };
         
         // Remove purely frontend calculated metrics if they exist in the object
@@ -219,6 +261,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 ...data[0],
                 id: String(data[0].id),
                 tags: data[0].tags || [],
+                rulesFollowed: data[0].rulesFollowed || [],
                 screenshotUrl: data[0].screenshotUrl
             } as Trade;
             setTrades((prev) => [newTrade, ...prev]);
@@ -234,11 +277,12 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateTrade = useCallback(async (updatedTrade: Trade) => {
     if (isSupabaseConfigured) {
-        const { tags: tradeTags, ...tradeData } = updatedTrade;
+        const { tags: tradeTags, rulesFollowed, ...tradeData } = updatedTrade;
         
         const dbPayload: any = { 
             ...tradeData, 
-            tags: tradeTags || [] 
+            tags: tradeTags || [],
+            rulesFollowed: rulesFollowed || []
         };
 
         // Remove purely frontend calculated metrics if they exist in the object
@@ -405,7 +449,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }]).select();
           if (error) { alert(error.message); return; }
           if (data) {
-              setTags(prev => [...prev, { id: String(data[0].id), name: data[0].name, categoryId: data[0].category_id }]);
+              setTags(prev => [...prev, { id: String(data[0].id), name: data[0].name, categoryId: data[0].category_id } as Tag]);
           }
       } else {
           setTags(prev => {
