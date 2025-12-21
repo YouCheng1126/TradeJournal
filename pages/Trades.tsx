@@ -1,13 +1,14 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useTrades } from '../contexts/TradeContext';
 import { 
     calculatePnL, formatCurrency, calculateRMultiple, calculateProfitFactor, 
     calculateAvgWinLoss, calculateGrossStats, calculateStreaks
 } from '../utils/calculations';
-import { Edit, Trash2, Settings, X, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon } from 'lucide-react';
-import { TradeFormModal } from '../components/TradeFormModal/index';
+import { Settings, X, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon, Trash2, CheckSquare, Square, AlertTriangle } from 'lucide-react';
 import { Trade, TradeStatus } from '../types';
-import { SemiCircleGauge, ProfitFactorGauge, AvgWinLossBar, StreakWidget } from '../components/StatWidgets';
+import { TopWidgets } from '../components/Dashboard/TopWidgets';
+import { TradeInfoModal } from '../components/TradeInfoModal';
 
 // Column Definition
 interface ColumnDef {
@@ -15,50 +16,33 @@ interface ColumnDef {
     label: string;
 }
 
-// Removed tags, notes, status from ALL_COLUMNS as requested
+// Sorted Alphabetically for the Column Selector Modal
+// Removed 'screenshot' (Img) as requested
 const ALL_COLUMNS: ColumnDef[] = [
-    { id: 'openDate', label: 'Open Date' },
-    { id: 'openTime', label: 'Open Time' },
+    { id: 'actualRisk', label: 'Actual Risk' },
+    { id: 'actualRiskPct', label: 'Actual Risk %' },
+    { id: 'bestExitPrice', label: 'Best Exit' },
+    { id: 'bestPnL', label: 'Best P&L' },
+    { id: 'bestRR', label: 'Best RR' },
     { id: 'closeDate', label: 'Close Date' },
     { id: 'closeTime', label: 'Close Time' },
-    { id: 'symbol', label: 'Symbol' },
-    { id: 'screenshot', label: 'Img' }, // New Column
-    { id: 'side', label: 'Side' },
-    { id: 'status', label: 'Status' }, // Re-added status column
-    { id: 'quantity', label: 'Volume' }, 
+    { id: 'duration', label: 'Duration' },
     { id: 'entryPrice', label: 'Entry Price' },
     { id: 'exitPrice', label: 'Exit Price' },
-    { id: 'bestExitPrice', label: 'Best Exit' }, // Added Best Exit
-    { id: 'initialStopLoss', label: 'Stop Loss' },
-    { id: 'commissions', label: 'Commissions' },
     { id: 'netPnL', label: 'Net P&L' },
-    { id: 'grossPnL', label: 'Gross P&L' },
-    { id: 'rMultiple', label: 'R-Multiple' },
-    { id: 'strategy', label: 'Strategy' }, // Renamed from Playbook
-    { id: 'duration', label: 'Duration' },
+    { id: 'openDate', label: 'Open Date' },
+    { id: 'openTime', label: 'Open Time' },
+    { id: 'rMultiple', label: 'RR' },
+    { id: 'side', label: 'Side' },
+    { id: 'status', label: 'Status' },
+    { id: 'initialStopLoss', label: 'Stop Loss' },
+    { id: 'strategy', label: 'Strategy' },
+    { id: 'symbol', label: 'Symbol' },
+    { id: 'quantity', label: 'Volume' },
 ];
 
-const DEFAULT_COLUMNS = ['openDate', 'side', 'status', 'entryPrice', 'exitPrice', 'netPnL', 'openTime', 'duration'];
-
-// Card Component 
-const Card = ({ title, value, subValue, children, titleColor = "text-slate-400", alignChildren = "center" }: any) => (
-    <div className="bg-surface rounded-xl border border-slate-700/50 p-5 flex flex-col justify-between h-48 relative overflow-hidden shadow-sm">
-      <div className="flex items-center gap-1 text-sm font-semibold uppercase tracking-wider mb-2">
-          <span className={titleColor}>{title}</span>
-      </div>
-      <div className="flex items-center justify-between w-full h-full">
-          <div className="flex flex-col justify-center h-full">
-              <span className={`text-3xl font-bold ${typeof value === 'number' ? (value >= 0 ? 'text-white' : 'text-red-400') : 'text-white'}`}>
-                  {value}
-              </span>
-              {subValue && <span className="text-sm text-slate-500 mt-2">{subValue}</span>}
-          </div>
-          <div className={`flex items-${alignChildren} justify-center pb-4 w-full h-full pl-4`}>
-              {children}
-          </div>
-      </div>
-    </div>
-);
+// Adjusted default order: openTime next to openDate
+const DEFAULT_COLUMNS = ['openDate', 'openTime', 'side', 'status', 'entryPrice', 'exitPrice', 'netPnL', 'rMultiple', 'actualRisk', 'duration'];
 
 type SortDirection = 'asc' | 'desc' | null;
 
@@ -68,6 +52,10 @@ export const Trades: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_COLUMNS);
+  
+  // Selection State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
   // Sorting State
   const [sortConfig, setSortConfig] = useState<{ key: string | null; direction: SortDirection }>({ key: null, direction: null });
@@ -149,17 +137,42 @@ export const Trades: React.FC = () => {
     };
   }, [filteredTrades]);
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (!id) return;
-    deleteTrade(id);
+  // --- Selection Logic ---
+  const handleSelectAll = () => {
+      if (selectedIds.size === sortedTrades.length && sortedTrades.length > 0) {
+          setSelectedIds(new Set());
+      } else {
+          setSelectedIds(new Set(sortedTrades.map(t => t.id)));
+      }
   };
 
-  const handleEdit = (e: React.MouseEvent, trade: Trade) => {
-    e.stopPropagation();
-    setEditingTrade(trade);
-    setIsEditModalOpen(true);
+  const toggleSelectRow = (id: string) => {
+      const newSet = new Set(selectedIds);
+      if (newSet.has(id)) newSet.delete(id);
+      else newSet.add(id);
+      setSelectedIds(newSet);
+  };
+
+  const handleBulkDelete = async () => {
+      // Create a copy of IDs to delete to avoid state issues during iteration
+      const idsToDelete = Array.from(selectedIds);
+      
+      // Perform deletions
+      for (const id of idsToDelete) {
+          await deleteTrade(id);
+      }
+      
+      // Reset state
+      setSelectedIds(new Set());
+      setIsDeleteConfirmOpen(false);
+  };
+
+  const handleRowClick = (e: React.MouseEvent, trade: Trade) => {
+      // Prevent editing if clicking on checkbox or links
+      if ((e.target as HTMLElement).closest('.no-row-click')) return;
+      
+      setEditingTrade(trade);
+      setIsEditModalOpen(true);
   };
 
   const toggleColumn = (colId: string) => {
@@ -193,29 +206,89 @@ export const Trades: React.FC = () => {
       }
   };
 
+  // Local calculation helper for multiplier
+  const getMultiplier = (symbol: string) => {
+      const s = symbol.toUpperCase();
+      if (s.includes('MES')) return 5;
+      if (s.includes('MNQ')) return 2;
+      if (s === 'ES') return 50;
+      if (s === 'NQ') return 20;
+      return 1;
+  };
+
+  // Helper to calculate derived metrics per trade
+  const getTradeMetrics = (trade: Trade) => {
+      const mult = getMultiplier(trade.symbol);
+      const qty = trade.quantity;
+      const entry = trade.entryPrice;
+      
+      // 1. Initial Risk Amount
+      let initialRiskAmt = 0;
+      if (trade.initialStopLoss) {
+          initialRiskAmt = Math.abs(entry - trade.initialStopLoss) * qty * mult;
+      }
+
+      // 2. Actual Risk Amount
+      let actualRiskAmt = 0;
+      if (trade.direction === 'Long') {
+          // If lowestPriceReached is missing, assume entry price (no draw down) or handle logic
+          const low = trade.lowestPriceReached ?? entry; 
+          actualRiskAmt = (entry - low) * qty * mult;
+      } else {
+          const high = trade.highestPriceReached ?? entry;
+          actualRiskAmt = (high - entry) * qty * mult;
+      }
+      
+      if (actualRiskAmt < 0) actualRiskAmt = 0;
+
+      // 3. Best P&L
+      let bestPnL = 0;
+      if (trade.direction === 'Long') {
+          const exit = trade.bestExitPrice ?? trade.highestPriceReached ?? entry;
+          bestPnL = (exit - entry) * qty * mult;
+      } else {
+          const exit = trade.bestExitPrice ?? trade.lowestPriceReached ?? entry;
+          bestPnL = (entry - exit) * qty * mult;
+      }
+
+      return {
+          initialRiskAmt,
+          actualRiskAmt,
+          bestPnL,
+          actualRiskPct: initialRiskAmt > 0 ? (actualRiskAmt / initialRiskAmt) * 100 : 0,
+          bestRR: initialRiskAmt > 0 ? bestPnL / initialRiskAmt : 0
+      };
+  };
+
   const getSortableValue = (trade: Trade, colId: string): number | string => {
+      const metrics = getTradeMetrics(trade);
+
       switch(colId) {
           case 'openDate': return new Date(trade.entryDate).getTime();
-          case 'openTime': return new Date(trade.entryDate).getTime(); // Simplified, sort by full date
+          case 'openTime': return new Date(trade.entryDate).getTime();
           case 'closeDate': return trade.exitDate ? new Date(trade.exitDate).getTime() : 0;
           case 'closeTime': return trade.exitDate ? new Date(trade.exitDate).getTime() : 0;
           case 'symbol': return trade.symbol;
-          case 'screenshot': return trade.screenshotUrl ? 1 : 0;
           case 'side': return trade.direction;
-          case 'status': return getStatusWeight(trade.status); // Use custom weight
+          case 'status': return getStatusWeight(trade.status);
           case 'quantity': return trade.quantity;
           case 'entryPrice': return trade.entryPrice;
           case 'exitPrice': return trade.exitPrice || 0;
           case 'bestExitPrice': return trade.bestExitPrice || 0;
           case 'initialStopLoss': return trade.initialStopLoss || 0;
-          case 'commissions': return trade.commission;
           case 'netPnL': return calculatePnL(trade);
-          case 'grossPnL': return calculatePnL(trade) + (trade.commission || 0);
           case 'rMultiple': return calculateRMultiple(trade) || -999;
           case 'strategy': return strategies.find(p => p.id === trade.playbookId)?.name || '';
           case 'duration': 
               if (!trade.exitDate) return 0;
               return new Date(trade.exitDate).getTime() - new Date(trade.entryDate).getTime();
+          
+          // New Columns
+          case 'bestPnL': return metrics.bestPnL;
+          case 'bestRR': return metrics.bestRR;
+          case 'actualRisk': return metrics.actualRiskAmt;
+          case 'actualRiskPct': return metrics.actualRiskPct;
+          
           default: return 0;
       }
   };
@@ -249,6 +322,7 @@ export const Trades: React.FC = () => {
       const pnl = calculatePnL(trade);
       const entryDt = new Date(trade.entryDate);
       const exitDt = trade.exitDate ? new Date(trade.exitDate) : null;
+      const metrics = getTradeMetrics(trade);
 
       // Timezone Helper: America/New_York (EST/EDT)
       const formatTime = (date: Date) => date.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -259,12 +333,13 @@ export const Trades: React.FC = () => {
           case 'openTime': return formatTime(entryDt);
           case 'closeDate': return exitDt ? formatDate(exitDt) : '-';
           case 'closeTime': return exitDt ? formatTime(exitDt) : '-';
-          case 'symbol': return <span className="font-bold text-white">{trade.symbol}</span>;
-          case 'screenshot': return trade.screenshotUrl ? (
-              <a href={trade.screenshotUrl} target="_blank" rel="noopener noreferrer" className="block p-1 hover:bg-slate-700 rounded transition-colors w-fit" onClick={e => e.stopPropagation()}>
-                  <ImageIcon size={14} className="text-blue-400" />
-              </a>
-          ) : '';
+          case 'symbol': 
+            return (
+                <div className="flex items-center gap-2">
+                    <span className="font-bold text-white">{trade.symbol}</span>
+                    {trade.screenshotUrl && <ImageIcon size={14} className="text-slate-500" />}
+                </div>
+            );
           case 'side': return (
             <span className={`px-2 py-1 rounded text-xs font-semibold ${trade.direction === 'Long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                 {trade.direction === 'Long' ? 'Long' : 'Short'}
@@ -286,13 +361,11 @@ export const Trades: React.FC = () => {
           case 'quantity': return trade.quantity;
           case 'entryPrice': return <span className="text-slate-300">{trade.entryPrice}</span>;
           case 'exitPrice': return <span className="text-slate-300">{trade.exitPrice || '-'}</span>;
-          case 'bestExitPrice': return <span className="text-slate-400 text-xs">{trade.bestExitPrice || '-'}</span>;
+          case 'bestExitPrice': 
+                const bestExit = trade.bestExitPrice ?? (trade.direction === 'Long' ? trade.highestPriceReached : trade.lowestPriceReached);
+                return <span className="text-slate-400 text-xs">{bestExit || '-'}</span>;
           case 'initialStopLoss': return <span className="text-amber-500/80">{trade.initialStopLoss || '-'}</span>;
-          case 'commissions': return <span className="text-slate-400">{trade.commission}</span>;
           case 'netPnL': return <span className={`font-bold text-base ${pnl > 0 ? 'text-green-400' : pnl < 0 ? 'text-red-400' : 'text-slate-400'}`}>{formatCurrency(pnl)}</span>;
-          case 'grossPnL': 
-              const gross = pnl + (trade.commission || 0);
-              return <span className={gross > 0 ? 'text-green-400' : gross < 0 ? 'text-red-400' : ''}>{formatCurrency(gross)}</span>;
           case 'rMultiple': 
               const r = calculateRMultiple(trade);
               return r !== undefined ? `${r}R` : '-';
@@ -310,6 +383,17 @@ export const Trades: React.FC = () => {
                   }
               }
               return '-';
+          
+          // New Columns Renders
+          case 'bestPnL':
+              return <span className={metrics.bestPnL > 0 ? 'text-green-400' : ''}>{formatCurrency(metrics.bestPnL)}</span>;
+          case 'bestRR':
+              return <span className="text-slate-300">{metrics.bestRR.toFixed(2)}R</span>;
+          case 'actualRisk':
+              return <span className="text-red-400">-{formatCurrency(metrics.actualRiskAmt)}</span>;
+          case 'actualRiskPct':
+              return <span className="text-slate-300">{metrics.actualRiskPct.toFixed(1)}%</span>;
+
           default: return '-';
       }
   };
@@ -317,57 +401,29 @@ export const Trades: React.FC = () => {
   return (
     <div className="space-y-6">
       
-      {/* 1. Top Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="bg-surface rounded-xl border border-slate-700/50 p-5 flex flex-col justify-between h-48 relative overflow-hidden shadow-sm">
-            <div className="flex items-center gap-1 text-sm font-semibold uppercase tracking-wider mb-2">
-                <span className="text-slate-400">Net P&L</span>
-            </div>
-            <div className="flex items-center justify-between w-full">
-                <div className="flex flex-col justify-center h-full mt-4">
-                    <span className={`text-3xl font-bold ${stats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {formatCurrency(stats.totalPnL)}
-                    </span>
-                    <span className="text-sm text-slate-500 mt-1">{stats.count} trades</span>
-                </div>
-            </div>
-        </div>
-
-        <Card title="Trade win %" value={`${stats.adjustedWinRate}%`} subValue=""><SemiCircleGauge winCount={stats.winsCount} breakEvenCount={stats.breakEvenCount} lossCount={stats.lossesCount} /></Card>
-        <Card title="Profit factor" value={stats.profitFactor.toFixed(2)} subValue=""><ProfitFactorGauge grossProfit={stats.grossProfit} grossLoss={stats.grossLoss} /></Card>
-        
-        <div className="bg-surface rounded-xl border border-slate-700/50 p-5 flex flex-col justify-between h-48 relative overflow-hidden shadow-sm">
-            <div className="flex items-center gap-1 text-sm font-semibold uppercase tracking-wider mb-2">
-                <span className="text-slate-400">Current Streak</span>
-            </div>
-            <div className="h-full flex items-center justify-center pb-6"> 
-                 <StreakWidget 
-                    currentDayStreak={stats.currentDayStreak} 
-                    maxDayWinStreak={stats.maxDayWinStreak}
-                    maxDayLossStreak={stats.maxDayLossStreak}
-                    currentTradeStreak={stats.currentTradeStreak}
-                    maxTradeWinStreak={stats.maxTradeWinStreak}
-                    maxTradeLossStreak={stats.maxTradeLossStreak}
-                 />
-            </div>
-        </div>
-
-        <Card title="Avg win/loss trade" value={(Math.abs(stats.avgWin) / (Math.abs(stats.avgLoss) || 1)).toFixed(2)} subValue="" alignChildren="end">
-            <div className="mb-8"> 
-                 <AvgWinLossBar win={stats.avgWin} loss={stats.avgLoss} />
-            </div>
-        </Card>
-      </div>
+      {/* 1. Top Stats (Reused from Dashboard) */}
+      <TopWidgets stats={stats} />
 
       <div className="flex justify-between items-center mt-8">
          <h2 className="text-2xl font-bold text-white">交易資料庫 (Trades Database)</h2>
-         <div className="relative">
+         <div className="flex gap-2">
+            {/* Settings Button */}
             <button 
                 onClick={() => setIsColumnModalOpen(true)}
                 className="p-2 bg-surface hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors"
                 title="欄位設定"
             >
                 <Settings size={20} />
+            </button>
+
+            {/* Trash Button - Activated on Selection */}
+            <button 
+                onClick={() => selectedIds.size > 0 && setIsDeleteConfirmOpen(true)}
+                className={`p-2 border border-slate-700 rounded-lg transition-all ${selectedIds.size > 0 ? 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white border-red-500/30' : 'bg-surface text-slate-600 opacity-50 cursor-not-allowed'}`}
+                title={selectedIds.size > 0 ? `Delete ${selectedIds.size} trades` : "Select trades to delete"}
+                disabled={selectedIds.size === 0}
+            >
+                <Trash2 size={20} />
             </button>
          </div>
       </div>
@@ -391,57 +447,81 @@ export const Trades: React.FC = () => {
              <table className="w-full text-left text-sm text-slate-400">
                 <thead className="bg-slate-900/50 uppercase text-xs font-semibold tracking-wider text-slate-300">
                     <tr>
+                        {/* Select All Checkbox */}
+                        <th className="px-4 py-4 w-12 text-center border-b border-slate-700/50">
+                            <button 
+                                onClick={handleSelectAll}
+                                className={`flex items-center justify-center transition-colors ${selectedIds.size > 0 ? 'text-primary' : 'text-slate-600 hover:text-slate-400'}`}
+                            >
+                                {selectedIds.size > 0 && selectedIds.size === sortedTrades.length ? <CheckSquare size={16} /> : <Square size={16} />}
+                            </button>
+                        </th>
+                        
                         {visibleColumns.map(colId => {
                             const isSorted = sortConfig.key === colId;
                             return (
-                                <th key={colId} className="px-6 py-4 whitespace-nowrap">
-                                    <div className="flex items-center gap-1 group">
+                                <th key={colId} className="px-6 py-4 whitespace-nowrap border-b border-slate-700/50">
+                                    <div className="flex items-center gap-1 group cursor-pointer" onClick={() => handleSort(colId)}>
                                         {ALL_COLUMNS.find(c => c.id === colId)?.label}
-                                        <button 
-                                            onClick={() => handleSort(colId)} 
-                                            className={`p-0.5 rounded transition-colors ${isSorted ? 'text-primary bg-primary/10' : 'text-slate-600 hover:text-slate-400 hover:bg-slate-700'}`}
+                                        <div 
+                                            className={`p-0.5 rounded transition-colors ${isSorted ? 'text-primary bg-primary/10' : 'text-slate-600 opacity-0 group-hover:opacity-100 hover:text-slate-400 hover:bg-slate-700'}`}
                                             title="排序"
                                         >
                                             {isSorted && sortConfig.direction === 'asc' && <ArrowUp size={14} />}
                                             {isSorted && sortConfig.direction === 'desc' && <ArrowDown size={14} />}
                                             {!isSorted && <ArrowUpDown size={14} />}
-                                        </button>
+                                        </div>
                                     </div>
                                 </th>
                             );
                         })}
-                        <th className="px-6 py-4 text-center">Action</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700">
                     {sortedTrades.map((trade) => {
                         const rowKey = trade.id || `temp-${Math.random()}`; 
+                        const isSelected = selectedIds.has(trade.id);
                         return (
-                            <tr key={rowKey} className="hover:bg-slate-700/30 transition-colors group">
+                            <tr 
+                                key={rowKey} 
+                                onClick={(e) => handleRowClick(e, trade)}
+                                className={`transition-colors group cursor-pointer ${isSelected ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-slate-700/30'}`}
+                            >
+                                {/* Row Checkbox */}
+                                <td className="px-4 py-4 w-12 text-center no-row-click" onClick={(e) => e.stopPropagation()}>
+                                    <button 
+                                        onClick={() => toggleSelectRow(trade.id)}
+                                        className={`flex items-center justify-center transition-colors ${isSelected ? 'text-primary' : 'text-slate-600 hover:text-slate-400'}`}
+                                    >
+                                        {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                                    </button>
+                                </td>
+
                                 {visibleColumns.map(colId => (
                                     <td key={colId} className="px-6 py-4 whitespace-nowrap">
                                         {renderCell(trade, colId)}
                                     </td>
                                 ))}
-                                <td className="px-6 py-4 text-center">
-                                    <div className="flex items-center justify-center gap-2">
-                                        <button onClick={(e) => handleEdit(e, trade)} className="p-1.5 bg-slate-800 hover:bg-slate-600 rounded text-blue-400 border border-slate-700"><Edit size={16} /></button>
-                                        <button onClick={(e) => handleDelete(e, trade.id)} className="p-1.5 bg-red-500/10 hover:bg-red-500 hover:text-white rounded text-red-400 border border-red-500/20"><Trash2 size={16} /></button>
-                                    </div>
-                                </td>
                             </tr>
                         );
                     })}
+                    {sortedTrades.length === 0 && (
+                        <tr>
+                            <td colSpan={visibleColumns.length + 1} className="px-6 py-12 text-center text-slate-500">
+                                No trades found.
+                            </td>
+                        </tr>
+                    )}
                 </tbody>
              </table>
          </div>
       </div>
 
-      {/* Column Selection Modal */}
-      {isColumnModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      {/* Column Selection Modal - Using Portal */}
+      {isColumnModalOpen && createPortal(
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
              <div className="bg-surface w-[600px] max-h-[80vh] rounded-xl border border-slate-700 shadow-2xl flex flex-col">
-                <div className="p-4 border-b border-slate-700 flex justify-between items-center">
+                <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-[#1f2937] rounded-t-xl">
                     <div>
                         <h3 className="text-lg font-bold text-white">Select Columns</h3>
                         <p className="text-xs text-slate-400">Choose the columns you want to display in the table.</p>
@@ -449,22 +529,25 @@ export const Trades: React.FC = () => {
                     <button onClick={() => setIsColumnModalOpen(false)} className="text-slate-400 hover:text-white"><X size={20}/></button>
                 </div>
                 
-                <div className="p-4 border-b border-slate-700 flex gap-2">
+                <div className="p-4 border-b border-slate-700 flex gap-2 bg-[#1f2937]">
                     <button onClick={() => setVisibleColumns(ALL_COLUMNS.map(c => c.id))} className="px-3 py-1 rounded-full border border-slate-600 text-xs text-white hover:bg-slate-700">All</button>
                     <button onClick={() => setVisibleColumns([])} className="px-3 py-1 rounded-full border border-slate-600 text-xs text-white hover:bg-slate-700">None</button>
                     <button onClick={() => setVisibleColumns(DEFAULT_COLUMNS)} className="px-3 py-1 rounded-full bg-slate-700 text-xs text-white hover:bg-slate-600">Default</button>
                 </div>
 
-                <div className="p-6 grid grid-cols-3 gap-4 overflow-y-auto">
-                    {ALL_COLUMNS.map(col => (
-                        <label key={col.id} className="flex items-center gap-2 cursor-pointer group">
-                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${visibleColumns.includes(col.id) ? 'bg-primary border-primary' : 'border-slate-500 group-hover:border-slate-300'}`}>
-                                {visibleColumns.includes(col.id) && <div className="w-2 h-2 bg-white rounded-sm" />}
-                            </div>
-                            <span className={`text-sm ${visibleColumns.includes(col.id) ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>{col.label}</span>
-                            <input type="checkbox" className="hidden" checked={visibleColumns.includes(col.id)} onChange={() => toggleColumn(col.id)} />
-                        </label>
-                    ))}
+                <div className="p-6 overflow-y-auto bg-[#1f2937]">
+                    {/* Use columns-3 for top-to-bottom filling in 3 columns */}
+                    <div className="columns-3 gap-8 space-y-4">
+                        {ALL_COLUMNS.map(col => (
+                            <label key={col.id} className="flex items-center gap-2 cursor-pointer group break-inside-avoid">
+                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors flex-shrink-0 ${visibleColumns.includes(col.id) ? 'bg-primary border-primary' : 'border-slate-500 group-hover:border-slate-300'}`}>
+                                    {visibleColumns.includes(col.id) && <div className="w-2 h-2 bg-white rounded-sm" />}
+                                </div>
+                                <span className={`text-sm ${visibleColumns.includes(col.id) ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>{col.label}</span>
+                                <input type="checkbox" className="hidden" checked={visibleColumns.includes(col.id)} onChange={() => toggleColumn(col.id)} />
+                            </label>
+                        ))}
+                    </div>
                 </div>
 
                 <div className="p-4 border-t border-slate-700 flex justify-end gap-2 bg-slate-800/50 rounded-b-xl">
@@ -472,18 +555,50 @@ export const Trades: React.FC = () => {
                     <button onClick={() => setIsColumnModalOpen(false)} className="px-4 py-2 bg-primary hover:bg-indigo-600 text-white rounded-lg text-sm font-medium shadow-lg shadow-indigo-500/20">Update Table</button>
                 </div>
              </div>
-          </div>
+          </div>,
+          document.body
       )}
 
-      {/* Edit Modal */}
+      {/* Delete Confirmation Modal - Using Portal */}
+      {isDeleteConfirmOpen && createPortal(
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+             <div className="bg-[#1f2937] border border-slate-700 p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center transform scale-100 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500 ring-4 ring-red-500/5">
+                    <Trash2 size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Delete Trades?</h3>
+                <p className="text-slate-400 text-sm mb-8 leading-relaxed">
+                    Are you sure you want to delete <span className="text-white font-bold">{selectedIds.size}</span> trades?<br/>
+                    This action cannot be undone.
+                </p>
+                <div className="flex gap-4 justify-center">
+                    <button 
+                        onClick={() => setIsDeleteConfirmOpen(false)} 
+                        className="px-6 py-2.5 text-sm font-semibold text-slate-300 hover:text-white border border-slate-600 rounded-lg hover:bg-slate-700 transition-all flex-1"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onClick={handleBulkDelete} 
+                        className="px-6 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-500 rounded-lg shadow-lg shadow-red-500/20 transition-all flex-1"
+                    >
+                        Delete
+                    </button>
+                </div>
+             </div>
+          </div>,
+          document.body
+      )}
+
+      {/* New Trade Info Modal (Replacing the Edit Modal for clicking existing trades) */}
       {editingTrade && (
-          <TradeFormModal 
+          <TradeInfoModal 
             isOpen={isEditModalOpen}
             onClose={() => {
                 setIsEditModalOpen(false);
                 setEditingTrade(undefined);
             }}
-            initialData={editingTrade}
+            trade={editingTrade}
           />
       )}
     </div>

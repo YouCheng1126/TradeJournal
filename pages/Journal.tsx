@@ -4,7 +4,7 @@ import { calculatePnL, formatCurrency, calculateWinRate, calculateProfitFactor }
 import { ChevronDown, ChevronUp, Calendar as CalendarIcon, Edit, Trash2, Image as ImageIcon } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, YAxis, Tooltip as RechartsTooltip } from 'recharts';
 import { Trade } from '../types';
-import { TradeFormModal } from '../components/TradeFormModal/index';
+import { TradeInfoModal } from '../components/TradeInfoModal';
 import { useLocation } from 'react-router-dom';
 
 // Helpers
@@ -305,15 +305,15 @@ export const Journal: React.FC = () => {
             )}
        </div>
 
-       {/* Edit Modal (Reused) */}
+       {/* Edit Modal (Replaced with TradeInfoModal) */}
        {editingTrade && (
-          <TradeFormModal 
+          <TradeInfoModal 
             isOpen={isEditModalOpen}
             onClose={() => {
                 setIsEditModalOpen(false);
                 setEditingTrade(undefined);
             }}
-            initialData={editingTrade}
+            trade={editingTrade}
           />
       )}
     </div>
