@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Save, AlertCircle, Calendar, Clock, ChevronDown, ChevronRight, ChevronLeft, Plus, ArrowUp, ArrowDown, Link as LinkIcon, Target, Check, Tag as TagIcon, ListChecks, CheckSquare, Square } from 'lucide-react';
 import { endOfMonth, format, isSameDay, addMonths } from 'date-fns';
 import startOfMonth from 'date-fns/startOfMonth';
@@ -888,13 +889,16 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
       autoComplete: "off",
   };
   
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-md">
       <style>{shakeStyle}</style>
 
-      <div ref={modalPanelRef} className="bg-[#1f2937] w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700/50 shadow-2xl">
-        <form onSubmit={handleSubmit} noValidate>
-          <div className="sticky top-0 bg-[#1f2937]/95 border-b border-slate-700/50 p-5 flex justify-between items-center z-10 backdrop-blur">
+      {/* Main Container - Flex Column Layout instead of Overflow-Y */}
+      <div ref={modalPanelRef} className="bg-[#1f2937] w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl border border-slate-700/50 shadow-2xl">
+        <form onSubmit={handleSubmit} noValidate className="flex flex-col h-full overflow-hidden">
+          
+          {/* Header - Fixed - Added rounded-t-2xl */}
+          <div className="bg-[#1f2937] border-b border-slate-700/50 p-5 flex justify-between items-center z-20 flex-shrink-0 rounded-t-2xl">
             <h2 className="text-xl font-bold text-white flex items-center gap-2 tracking-tight">
                 {initialData ? '編輯交易 (Edit)' : '新增交易 (New)'}
             </h2>
@@ -907,343 +911,348 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
             </div>
           </div>
 
-          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-10">
-            <div className="space-y-6">
-              <h3 className="text-xs uppercase tracking-widest text-primary font-bold border-b border-slate-700/50 pb-2">執行細節 (Execution)</h3>
-              
-              <div className="grid grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1.5">商品 (Symbol)</label>
-                  <input name="symbol" type="text" value={formData.symbol || ''} onChange={handleChange} className={getInputClass('symbol')} placeholder="MES" style={{ textTransform: 'uppercase' }} autoComplete="off" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1.5">方向 (Direction)</label>
-                  {renderDirectionInput()}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-4 gap-5">
-                 <div className="col-span-2 relative" ref={datePickerRef}>
-                    <label className="block text-xs font-medium text-slate-400 mb-1.5">日期 (Date)</label>
-                    {renderDateInput()}
-                    {errors.entryDate && <p className="text-red-400 text-xs mt-1 absolute whitespace-nowrap">{errors.entryDate}</p>}
-                    {showDatePicker && renderCalendar()}
-                 </div>
-                 <div className="col-span-1">
-                    <label className="block text-xs font-medium text-slate-400 mb-1.5">口數 (Qty)</label>
-                    <input name="quantity" type="number" value={formData.quantity} onChange={handleChange} className={getInputClass('quantity')} {...textInputProps} />
-                 </div>
-                 <div className="col-span-1">
-                    <label className="block text-xs font-medium text-slate-400 mb-1.5">手續費 (Comm)</label>
-                    <input name="commission" type="number" step="0.01" value={formData.commission} onChange={handleChange} className={getInputClass('commission')} {...textInputProps} />
-                 </div>
-              </div>
-
-               <div className="grid grid-cols-2 gap-5" ref={timePickerRef}>
-                    <div className="relative">
-                        <label className="block text-xs font-medium text-slate-400 mb-1.5">進場時間 (In - UTC+8)</label>
-                        {renderTimeInput('entry')}
-                        {errors.entryTime && <p className="text-red-400 text-xs mt-1 absolute">{errors.entryTime}</p>}
-                        {showTimePicker === 'entry' && renderTimePicker('entry')}
+          {/* Body - Scrollable */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+              <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-10 pb-40"> {/* pb-40 allows space for dropdowns at bottom */}
+                <div className="space-y-6">
+                  {/* REMOVED EXECUTION HEADER */}
+                  
+                  <div className="grid grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1.5">商品 (Symbol)</label>
+                      <input name="symbol" type="text" value={formData.symbol || ''} onChange={handleChange} className={getInputClass('symbol')} placeholder="MES" style={{ textTransform: 'uppercase' }} autoComplete="off" />
                     </div>
-                    <div className="relative">
-                        <label className="block text-xs font-medium text-slate-400 mb-1.5">離場時間 (Out - UTC+8)</label>
-                        {renderTimeInput('exit')}
-                        {errors.exitTime && <p className="text-red-400 text-xs mt-1 absolute">{errors.exitTime}</p>}
-                        {showTimePicker === 'exit' && renderTimePicker('exit')}
+                    <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1.5">方向 (Direction)</label>
+                      {renderDirectionInput()}
                     </div>
-               </div>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-5 pt-4">
-                 <div>
-                    <label className="block text-xs font-bold text-emerald-400 mb-1.5">入場價 (Entry Price)</label>
-                    <input name="entryPrice" type="number" step="0.25" value={formData.entryPrice || ''} onChange={handleChange} className={`${getInputClass('entryPrice')} border-emerald-500/30 focus:border-emerald-500 bg-emerald-500/5`} placeholder="0.00" {...textInputProps} />
-                 </div>
-                 <div className="relative">
-                    <div className="flex justify-between items-center mb-1.5">
-                        <label className="block text-xs font-bold text-rose-400">出場價 (Exit Price)</label>
-                        <button type="button" tabIndex={-1} onClick={handleMultiExitToggle} className="text-slate-400 hover:text-white p-0.5 rounded hover:bg-slate-700" title="多重出場 (Multiple Exits)">
-                            <Plus size={12} />
-                        </button>
-                    </div>
-                    {!isMultiExit ? (
-                        <input name="exitPrice" type="number" step="0.25" value={getDisplayValue('exitPrice')} onChange={(e) => handlePriceOrPointsChange('exitPrice', e.target.value)} className={`${getInputClass('exitPrice')} border-rose-500/30 focus:border-rose-500 bg-rose-500/5`} placeholder={inputMode === 'price' ? "0.00" : "+/- Points"} {...textInputProps} />
-                    ) : (
-                        <div className="flex gap-2">
-                            <input 
-                                type="number" 
-                                step="0.25" 
-                                value={exitPrice1} 
-                                onChange={(e) => setExitPrice1(e.target.value)} 
-                                className={`${getInputClass('exitPrice').replace('w-full', 'w-1/2')} border-rose-500/30 focus:border-rose-500 bg-rose-500/5`} 
-                                placeholder={`Exit 1 ${inputMode === 'points' ? '(Pts)' : ''}`}
-                                {...textInputProps} 
-                            />
-                            <input 
-                                type="number" 
-                                step="0.25" 
-                                value={exitPrice2} 
-                                onChange={(e) => setExitPrice2(e.target.value)} 
-                                className={`${getInputClass('exitPrice').replace('w-full', 'w-1/2')} border-rose-500/30 focus:border-rose-500 bg-rose-500/5`} 
-                                placeholder={`Exit 2 ${inputMode === 'points' ? '(Pts)' : ''}`}
-                                {...textInputProps} 
-                            />
+                  <div className="grid grid-cols-4 gap-5">
+                     <div className="col-span-2 relative" ref={datePickerRef}>
+                        <label className="block text-xs font-medium text-slate-400 mb-1.5">日期 (Date)</label>
+                        {renderDateInput()}
+                        {errors.entryDate && <p className="text-red-400 text-xs mt-1 absolute whitespace-nowrap">{errors.entryDate}</p>}
+                        {showDatePicker && renderCalendar()}
+                     </div>
+                     <div className="col-span-1">
+                        <label className="block text-xs font-medium text-slate-400 mb-1.5">口數 (Qty)</label>
+                        <input name="quantity" type="number" value={formData.quantity} onChange={handleChange} className={getInputClass('quantity')} {...textInputProps} />
+                     </div>
+                     <div className="col-span-1">
+                        <label className="block text-xs font-medium text-slate-400 mb-1.5">手續費 (Comm)</label>
+                        <input name="commission" type="number" step="0.01" value={formData.commission} onChange={handleChange} className={getInputClass('commission')} {...textInputProps} />
+                     </div>
+                  </div>
+
+                   <div className="grid grid-cols-2 gap-5" ref={timePickerRef}>
+                        <div className="relative">
+                            <label className="block text-xs font-medium text-slate-400 mb-1.5">進場時間 (In - UTC+8)</label>
+                            {renderTimeInput('entry')}
+                            {errors.entryTime && <p className="text-red-400 text-xs mt-1 absolute">{errors.entryTime}</p>}
+                            {showTimePicker === 'entry' && renderTimePicker('entry')}
                         </div>
-                    )}
-                 </div>
-              </div>
+                        <div className="relative">
+                            <label className="block text-xs font-medium text-slate-400 mb-1.5">離場時間 (Out - UTC+8)</label>
+                            {renderTimeInput('exit')}
+                            {errors.exitTime && <p className="text-red-400 text-xs mt-1 absolute">{errors.exitTime}</p>}
+                            {showTimePicker === 'exit' && renderTimePicker('exit')}
+                        </div>
+                   </div>
 
-              {/* 3. Initial Stop Loss (Moved here from Right Column) */}
-              <div className="mt-4">
-                 <label className="block text-xs font-bold text-amber-500 mb-1.5">
-                    {inputMode === 'price' ? '初始止損 (Stop Loss)' : '初始止損點數 (Stop Loss Pts)'}
-                 </label>
-                 <input name="initialStopLoss" type="number" step="0.25" value={getDisplayValue('initialStopLoss')} onChange={(e) => handlePriceOrPointsChange('initialStopLoss', e.target.value)} className={`${getInputClass('initialStopLoss')} border-amber-500/30 focus:border-amber-500 bg-amber-500/5`} placeholder={inputMode === 'price' ? "Price" : "Points"} {...textInputProps} />
-                 {errors.initialStopLoss && <p className="text-red-400 text-xs mt-1.5 flex items-center gap-1"><AlertCircle size={12}/> {errors.initialStopLoss}</p>}
-               </div>
-            </div>
-
-            <div className="space-y-6">
-               <h3 className="text-xs uppercase tracking-widest text-primary font-bold border-b border-slate-700/50 pb-2">風險與分析 (Analysis)</h3>
-               
-               {/* 1. Max Profit / Max Loss */}
-               <div className="grid grid-cols-2 gap-5">
-                    <div>
-                        <label className="block text-xs font-semibold text-emerald-400 mb-1.5">
-                            {inputMode === 'price' ? '最大浮盈 (Max Profit)' : '最大浮盈點數 (Max Profit)'}
-                        </label>
-                        <input type="number" step="0.25" value={getDisplayValue(formData.direction === TradeDirection.LONG ? 'highestPriceReached' : 'lowestPriceReached')} onChange={(e) => handleExcursionChange('maxProfit', e.target.value)} className={getInputClass(formData.direction === TradeDirection.LONG ? 'highestPriceReached' : 'lowestPriceReached')} {...textInputProps} />
-                        {errors[formData.direction === TradeDirection.LONG ? 'highestPriceReached' : 'lowestPriceReached'] && <p className="text-red-400 text-xs mt-1.5 flex items-center gap-1"><AlertCircle size={12}/> {errors[formData.direction === TradeDirection.LONG ? 'highestPriceReached' : 'lowestPriceReached']}</p>}
-                    </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-rose-400 mb-1.5">
-                            {inputMode === 'price' ? '最大浮虧 (Max Loss)' : '最大浮虧點數 (Max Loss)'}
-                        </label>
-                        <input type="number" step="0.25" value={getDisplayValue(formData.direction === TradeDirection.LONG ? 'lowestPriceReached' : 'highestPriceReached')} onChange={(e) => handleExcursionChange('maxLoss', e.target.value)} className={getInputClass(formData.direction === TradeDirection.LONG ? 'lowestPriceReached' : 'highestPriceReached')} {...textInputProps} />
-                        {errors[formData.direction === TradeDirection.LONG ? 'lowestPriceReached' : 'highestPriceReached'] && <p className="text-red-400 text-xs mt-1.5 flex items-center gap-1"><AlertCircle size={12}/> {errors[formData.direction === TradeDirection.LONG ? 'lowestPriceReached' : 'highestPriceReached']}</p>}
-                    </div>
-               </div>
-
-               {/* 2. Status & Best Exit */}
-               <div className="grid grid-cols-2 gap-5">
-                    <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1.5">交易結果 (Status)</label>
-                        {renderStatusInput()}
-                    </div>
-                    <div>
+                  <div className="grid grid-cols-2 gap-5 pt-4">
+                     <div>
+                        <label className="block text-xs font-bold text-emerald-400 mb-1.5">入場價 (Entry Price)</label>
+                        <input name="entryPrice" type="number" step="0.25" value={formData.entryPrice || ''} onChange={handleChange} className={`${getInputClass('entryPrice')} border-emerald-500/30 focus:border-emerald-500 bg-emerald-500/5`} placeholder="0.00" {...textInputProps} />
+                     </div>
+                     <div className="relative">
                         <div className="flex justify-between items-center mb-1.5">
-                            <label className="block text-xs font-medium text-slate-400">最佳離場價 (Best Exit)</label>
-                            <button 
-                                type="button" 
-                                tabIndex={-1} 
-                                onClick={handleSetBestExitToMaxProfit} 
-                                className="text-slate-400 hover:text-white p-0.5 rounded hover:bg-slate-700" 
-                                title="同步最大浮盈"
-                            >
-                                <Target size={12} />
+                            <label className="block text-xs font-bold text-rose-400">出場價 (Exit Price)</label>
+                            <button type="button" tabIndex={-1} onClick={handleMultiExitToggle} className="text-slate-400 hover:text-white p-0.5 rounded hover:bg-slate-700" title="多重出場 (Multiple Exits)">
+                                <Plus size={12} />
                             </button>
                         </div>
-                        <input name="bestExitPrice" type="number" step="0.25" value={getDisplayValue('bestExitPrice')} onChange={(e) => handlePriceOrPointsChange('bestExitPrice', e.target.value)} className={getInputClass('bestExitPrice')} placeholder={inputMode === 'price' ? "Price" : "Points"} {...textInputProps} />
-                    </div>
-               </div>
-               
-               {/* Strategy Section */}
-               <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1.5">交易策略 (Strategy)</label>
-                  <div className="flex gap-2 relative">
-                      <div className="relative flex-1" ref={strategySelectRef}>
-                          <select name="playbookId" value={formData.playbookId || ''} onChange={handleChange} className={`${getInputClass('playbookId')} appearance-none cursor-pointer h-[42px]`}>
-                            <option value="">-- 選擇策略 --</option>
-                            {strategies.map(st => (<option key={st.id} value={st.id}>{st.name}</option>))}
-                          </select>
-                          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                      </div>
-                      
-                      {/* Strategy Rules Button */}
-                      <div className="relative" ref={rulesPopupRef}>
-                          <button
-                            ref={rulesButtonRef}
-                            type="button"
-                            disabled={!formData.playbookId}
-                            onClick={handleToggleRules}
-                            className={`h-[42px] px-3 border rounded-lg transition-colors flex items-center gap-2 ${showRulesChecklist ? 'bg-primary border-primary text-white' : 'bg-surface/50 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'} ${!formData.playbookId ? 'opacity-50 cursor-not-allowed hover:border-slate-700 hover:text-slate-400' : ''}`}
-                          >
-                              <ListChecks size={18} />
-                              <span className="text-xs font-bold hidden sm:inline">Rules</span>
-                          </button>
+                        {!isMultiExit ? (
+                            <input name="exitPrice" type="number" step="0.25" value={getDisplayValue('exitPrice')} onChange={(e) => handlePriceOrPointsChange('exitPrice', e.target.value)} className={`${getInputClass('exitPrice')} border-rose-500/30 focus:border-rose-500 bg-rose-500/5`} placeholder={inputMode === 'price' ? "0.00" : "+/- Points"} {...textInputProps} />
+                        ) : (
+                            <div className="flex gap-2">
+                                <input 
+                                    type="number" 
+                                    step="0.25" 
+                                    value={exitPrice1} 
+                                    onChange={(e) => setExitPrice1(e.target.value)} 
+                                    className={`${getInputClass('exitPrice').replace('w-full', 'w-1/2')} border-rose-500/30 focus:border-rose-500 bg-rose-500/5`} 
+                                    placeholder={`Exit 1 ${inputMode === 'points' ? '(Pts)' : ''}`}
+                                    {...textInputProps} 
+                                />
+                                <input 
+                                    type="number" 
+                                    step="0.25" 
+                                    value={exitPrice2} 
+                                    onChange={(e) => setExitPrice2(e.target.value)} 
+                                    className={`${getInputClass('exitPrice').replace('w-full', 'w-1/2')} border-rose-500/30 focus:border-rose-500 bg-rose-500/5`} 
+                                    placeholder={`Exit 2 ${inputMode === 'points' ? '(Pts)' : ''}`}
+                                    {...textInputProps} 
+                                />
+                            </div>
+                        )}
+                     </div>
+                  </div>
 
-                          {/* Strategy Rules Popover (Fixed Overlay) */}
-                          {showRulesChecklist && selectedStrategy && (
-                              <div 
-                                ref={fixedPopoverRef}
-                                style={popoverStyle}
-                                className="bg-[#1f2937] border border-slate-600 rounded-xl shadow-2xl overflow-hidden flex flex-col transition-opacity duration-75"
+                  {/* 3. Initial Stop Loss (Moved here from Right Column) */}
+                  <div className="mt-4">
+                     <label className="block text-xs font-bold text-amber-500 mb-1.5">
+                        {inputMode === 'price' ? '初始止損 (Stop Loss)' : '初始止損點數 (Stop Loss Pts)'}
+                     </label>
+                     <input name="initialStopLoss" type="number" step="0.25" value={getDisplayValue('initialStopLoss')} onChange={(e) => handlePriceOrPointsChange('initialStopLoss', e.target.value)} className={`${getInputClass('initialStopLoss')} border-amber-500/30 focus:border-amber-500 bg-amber-500/5`} placeholder={inputMode === 'price' ? "Price" : "Points"} {...textInputProps} />
+                     {errors.initialStopLoss && <p className="text-red-400 text-xs mt-1.5 flex items-center gap-1"><AlertCircle size={12}/> {errors.initialStopLoss}</p>}
+                   </div>
+                </div>
+
+                <div className="space-y-6">
+                   {/* REMOVED ANALYSIS HEADER */}
+                   
+                   {/* 1. Max Profit / Max Loss */}
+                   <div className="grid grid-cols-2 gap-5">
+                        <div>
+                            <label className="block text-xs font-semibold text-emerald-400 mb-1.5">
+                                {inputMode === 'price' ? '最大浮盈 (Max Profit)' : '最大浮盈點數 (Max Profit)'}
+                            </label>
+                            <input type="number" step="0.25" value={getDisplayValue(formData.direction === TradeDirection.LONG ? 'highestPriceReached' : 'lowestPriceReached')} onChange={(e) => handleExcursionChange('maxProfit', e.target.value)} className={getInputClass(formData.direction === TradeDirection.LONG ? 'highestPriceReached' : 'lowestPriceReached')} {...textInputProps} />
+                            {errors[formData.direction === TradeDirection.LONG ? 'highestPriceReached' : 'lowestPriceReached'] && <p className="text-red-400 text-xs mt-1.5 flex items-center gap-1"><AlertCircle size={12}/> {errors[formData.direction === TradeDirection.LONG ? 'highestPriceReached' : 'lowestPriceReached']}</p>}
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-rose-400 mb-1.5">
+                                {inputMode === 'price' ? '最大浮虧 (Max Loss)' : '最大浮虧點數 (Max Loss)'}
+                            </label>
+                            <input type="number" step="0.25" value={getDisplayValue(formData.direction === TradeDirection.LONG ? 'lowestPriceReached' : 'highestPriceReached')} onChange={(e) => handleExcursionChange('maxLoss', e.target.value)} className={getInputClass(formData.direction === TradeDirection.LONG ? 'lowestPriceReached' : 'highestPriceReached')} {...textInputProps} />
+                            {errors[formData.direction === TradeDirection.LONG ? 'lowestPriceReached' : 'highestPriceReached'] && <p className="text-red-400 text-xs mt-1.5 flex items-center gap-1"><AlertCircle size={12}/> {errors[formData.direction === TradeDirection.LONG ? 'lowestPriceReached' : 'highestPriceReached']}</p>}
+                        </div>
+                   </div>
+
+                   {/* 2. Status & Best Exit */}
+                   <div className="grid grid-cols-2 gap-5">
+                        <div>
+                            <label className="block text-xs font-medium text-slate-400 mb-1.5">交易結果 (Status)</label>
+                            {renderStatusInput()}
+                        </div>
+                        <div>
+                            <div className="flex justify-between items-center mb-1.5">
+                                <label className="block text-xs font-medium text-slate-400">最佳離場價 (Best Exit)</label>
+                                <button 
+                                    type="button" 
+                                    tabIndex={-1} 
+                                    onClick={handleSetBestExitToMaxProfit} 
+                                    className="text-slate-400 hover:text-white p-0.5 rounded hover:bg-slate-700" 
+                                    title="同步最大浮盈"
+                                >
+                                    <Target size={12} />
+                                </button>
+                            </div>
+                            <input name="bestExitPrice" type="number" step="0.25" value={getDisplayValue('bestExitPrice')} onChange={(e) => handlePriceOrPointsChange('bestExitPrice', e.target.value)} className={getInputClass('bestExitPrice')} placeholder={inputMode === 'price' ? "Price" : "Points"} {...textInputProps} />
+                        </div>
+                   </div>
+                   
+                   {/* Strategy Section */}
+                   <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1.5">交易策略 (Strategy)</label>
+                      <div className="flex gap-2 relative">
+                          <div className="relative flex-1" ref={strategySelectRef}>
+                              <select name="playbookId" value={formData.playbookId || ''} onChange={handleChange} className={`${getInputClass('playbookId')} appearance-none cursor-pointer h-[42px]`}>
+                                <option value="">-- 選擇策略 --</option>
+                                {strategies.map(st => (<option key={st.id} value={st.id}>{st.name}</option>))}
+                              </select>
+                              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                          </div>
+                          
+                          {/* Strategy Rules Button */}
+                          <div className="relative" ref={rulesPopupRef}>
+                              <button
+                                ref={rulesButtonRef}
+                                type="button"
+                                disabled={!formData.playbookId}
+                                onClick={handleToggleRules}
+                                className={`h-[42px] px-3 border rounded-lg transition-colors flex items-center gap-2 ${showRulesChecklist ? 'bg-primary border-primary text-white' : 'bg-surface/50 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'} ${!formData.playbookId ? 'opacity-50 cursor-not-allowed hover:border-slate-700 hover:text-slate-400' : ''}`}
                               >
-                                  {/* Header with Progress */}
-                                  <div className="p-4 border-b border-slate-700 bg-slate-800/50 flex-shrink-0">
-                                      <div className="flex items-center gap-2 mb-2">
-                                          <div className="w-3 h-3 rounded bg-[#8f3f3f]" style={{ backgroundColor: selectedStrategy.color }}></div>
-                                          <span className="font-bold text-white text-sm truncate">{selectedStrategy.name}</span>
-                                      </div>
-                                      
-                                      {(() => {
-                                          const { checked, total } = getStrategyProgress();
-                                          return (
-                                              <div>
-                                                  <div className="flex justify-between text-xs text-slate-400 mb-1 font-semibold uppercase">
-                                                      <span>Rules Followed</span>
-                                                      <span>{checked} / {total}</span>
-                                                  </div>
-                                                  <div className="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
-                                                      <div 
-                                                        className="h-full bg-emerald-500 transition-all duration-300" 
-                                                        style={{ width: total > 0 ? `${(checked / total) * 100}%` : '0%' }}
-                                                      ></div>
-                                                  </div>
-                                              </div>
-                                          );
-                                      })()}
-                                  </div>
+                                  <ListChecks size={18} />
+                                  <span className="text-xs font-bold hidden sm:inline">Rules</span>
+                              </button>
 
-                                  {/* Rules List - SCROLLABLE */}
-                                  <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-4">
-                                      {selectedStrategy.rules && selectedStrategy.rules.length > 0 ? (
-                                          selectedStrategy.rules.map((group) => {
-                                              // Legacy Check
-                                              if (typeof group === 'string') return null;
-
+                              {/* Strategy Rules Popover (Fixed Overlay) */}
+                              {showRulesChecklist && selectedStrategy && (
+                                  <div 
+                                    ref={fixedPopoverRef}
+                                    style={popoverStyle}
+                                    className="bg-[#1f2937] border border-slate-600 rounded-xl shadow-2xl overflow-hidden flex flex-col transition-opacity duration-75"
+                                  >
+                                      {/* Header with Progress */}
+                                      <div className="p-4 border-b border-slate-700 bg-slate-800/50 flex-shrink-0">
+                                          <div className="flex items-center gap-2 mb-2">
+                                              <div className="w-3 h-3 rounded bg-[#8f3f3f]" style={{ backgroundColor: selectedStrategy.color }}></div>
+                                              <span className="font-bold text-white text-sm truncate">{selectedStrategy.name}</span>
+                                          </div>
+                                          
+                                          {(() => {
+                                              const { checked, total } = getStrategyProgress();
                                               return (
-                                                  <div key={group.id} className="px-2">
-                                                      <h4 className="text-[10px] uppercase font-bold text-slate-500 mb-2 pl-1">{group.name}</h4>
-                                                      <div className="space-y-1">
-                                                          {group.items.map(item => {
-                                                              const isChecked = formData.rulesFollowed?.includes(item.id);
-                                                              return (
-                                                                  <button
-                                                                      key={item.id}
-                                                                      type="button"
-                                                                      onClick={() => toggleRuleCheck(item.id)}
-                                                                      className="w-full text-left flex items-start gap-3 p-2 rounded hover:bg-slate-800 transition-colors group"
-                                                                      data-rule-text={item.text} // For future aggregation logic
-                                                                  >
-                                                                      <div className={`mt-0.5 transition-colors ${isChecked ? 'text-primary' : 'text-slate-600 group-hover:text-slate-500'}`}>
-                                                                          {isChecked ? <CheckSquare size={16} /> : <Square size={16} />}
-                                                                      </div>
-                                                                      <span className={`text-sm leading-snug ${isChecked ? 'text-white' : 'text-slate-400'}`}>
-                                                                          {item.text}
-                                                                      </span>
-                                                                  </button>
-                                                              );
-                                                          })}
+                                                  <div>
+                                                      <div className="flex justify-between text-xs text-slate-400 mb-1 font-semibold uppercase">
+                                                          <span>Rules Followed</span>
+                                                          <span>{checked} / {total}</span>
+                                                      </div>
+                                                      <div className="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                                                          <div 
+                                                            className="h-full bg-emerald-500 transition-all duration-300" 
+                                                            style={{ width: total > 0 ? `${(checked / total) * 100}%` : '0%' }}
+                                                          ></div>
                                                       </div>
                                                   </div>
                                               );
-                                          })
-                                      ) : (
-                                          <div className="text-center py-6 text-slate-500 text-xs">No rules defined.</div>
-                                      )}
+                                          })()}
+                                      </div>
+
+                                      {/* Rules List - SCROLLABLE */}
+                                      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-4">
+                                          {selectedStrategy.rules && selectedStrategy.rules.length > 0 ? (
+                                              selectedStrategy.rules.map((group) => {
+                                                  // Legacy Check
+                                                  if (typeof group === 'string') return null;
+
+                                                  return (
+                                                      <div key={group.id} className="px-2">
+                                                          <h4 className="text-[10px] uppercase font-bold text-slate-500 mb-2 pl-1">{group.name}</h4>
+                                                          <div className="space-y-1">
+                                                              {group.items.map(item => {
+                                                                  const isChecked = formData.rulesFollowed?.includes(item.id);
+                                                                  return (
+                                                                      <button
+                                                                          key={item.id}
+                                                                          type="button"
+                                                                          onClick={() => toggleRuleCheck(item.id)}
+                                                                          className="w-full text-left flex items-start gap-3 p-2 rounded hover:bg-slate-800 transition-colors group"
+                                                                          data-rule-text={item.text} // For future aggregation logic
+                                                                      >
+                                                                          <div className={`mt-0.5 transition-colors ${isChecked ? 'text-primary' : 'text-slate-600 group-hover:text-slate-500'}`}>
+                                                                              {isChecked ? <CheckSquare size={16} /> : <Square size={16} />}
+                                                                          </div>
+                                                                          <span className={`text-sm leading-snug ${isChecked ? 'text-white' : 'text-slate-400'}`}>
+                                                                              {item.text}
+                                                                          </span>
+                                                                      </button>
+                                                                  );
+                                                              })}
+                                                          </div>
+                                                      </div>
+                                                  );
+                                              })
+                                          ) : (
+                                              <div className="text-center py-6 text-slate-500 text-xs">No rules defined.</div>
+                                          )}
+                                      </div>
                                   </div>
-                              </div>
-                          )}
+                              )}
+                          </div>
                       </div>
-                  </div>
-               </div>
+                   </div>
 
-               {/* --- NEW TAG SELECTOR (Renamed from Bag) --- */}
-               <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-2">標籤 (Tags)</label>
-                  <div className="flex flex-wrap gap-2 p-2 border border-slate-700/50 rounded-lg bg-slate-800/20 min-h-[42px] items-start relative">
-                    {tagCategories.map(cat => {
-                        const items = tags.filter(t => t.categoryId === cat.id);
-                        if (items.length === 0) return null;
+                   {/* --- NEW TAG SELECTOR (Renamed from Bag) --- */}
+                   {/* Added pt-4 to align with the visual grid of the left column (Prices section) */}
+                   <div className="pt-4">
+                      <label className="block text-xs font-medium text-slate-400 mb-2">標籤 (Tags)</label>
+                      <div className="flex flex-wrap gap-2 p-2 border border-slate-700/50 rounded-lg bg-slate-800/20 min-h-[42px] items-start relative">
+                        {tagCategories.map(cat => {
+                            const items = tags.filter(t => t.categoryId === cat.id);
+                            if (items.length === 0) return null;
 
-                        const selectedInCat = items.filter(t => formData.tags?.includes(t.id));
-                        const isDropdownOpen = activeTagDropdown === cat.id;
-                        
-                        return (
-                            <div key={cat.id} className="relative inline-block">
-                                <button 
-                                    type="button"
-                                    onClick={(e) => toggleTagDropdown(cat.id, e)}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all text-xs font-medium shadow-sm ${isDropdownOpen ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-800/50 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white'}`}
-                                >
-                                    <div className={`w-2 h-2 rounded-full ${cat.color}`}></div>
-                                    <span>{cat.name}</span>
-                                    {selectedInCat.length > 0 && (
-                                        <span className="bg-primary text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold -mr-1 shadow">
-                                            {selectedInCat.length}
-                                        </span>
-                                    )}
-                                    <ChevronDown size={10} className={`ml-1 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
-                                </button>
-
-                                {isDropdownOpen && (
-                                    <div 
-                                        ref={tagDropdownRef}
-                                        className="absolute top-full left-0 mt-2 min-w-[180px] w-auto max-w-[240px] bg-[#1f2937] border border-slate-600 rounded-xl shadow-2xl z-50 p-2 flex flex-col gap-1"
+                            const selectedInCat = items.filter(t => formData.tags?.includes(t.id));
+                            const isDropdownOpen = activeTagDropdown === cat.id;
+                            
+                            return (
+                                <div key={cat.id} className="relative inline-block">
+                                    <button 
+                                        type="button"
+                                        onClick={(e) => toggleTagDropdown(cat.id, e)}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all text-xs font-medium shadow-sm ${isDropdownOpen ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-800/50 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white'}`}
                                     >
-                                        <div className="max-h-[200px] overflow-y-auto custom-scrollbar flex flex-col gap-1">
-                                            {items.map(item => {
-                                                const isSelected = formData.tags?.includes(item.id);
-                                                return (
-                                                    <button 
-                                                        key={item.id} 
-                                                        type="button" 
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            const currentItems = formData.tags || [];
-                                                            if (currentItems.includes(item.id)) {
-                                                                setFormData(prev => ({ ...prev, tags: currentItems.filter(t => t !== item.id) }));
-                                                            } else {
-                                                                setFormData(prev => ({ ...prev, tags: [...currentItems, item.id] }));
-                                                            }
-                                                        }} 
-                                                        className={`text-left text-xs px-2 py-1.5 rounded flex items-center justify-between transition-colors ${isSelected ? `${cat.color} bg-opacity-20 text-white` : 'text-slate-300 hover:bg-slate-700'}`}
-                                                    >
-                                                        <span>{item.name}</span>
-                                                        {isSelected && <Check size={12} className={cat.color.replace('bg-', 'text-')} />}
-                                                    </button>
-                                                )
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                    {tags.length === 0 && <span className="text-xs text-slate-500 italic p-1">No tags available.</span>}
-                  </div>
-               </div>
+                                        <div className={`w-2 h-2 rounded-full ${cat.color}`}></div>
+                                        <span>{cat.name}</span>
+                                        {selectedInCat.length > 0 && (
+                                            <span className="bg-primary text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold -mr-1 shadow">
+                                                {selectedInCat.length}
+                                            </span>
+                                        )}
+                                        <ChevronDown size={10} className={`ml-1 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
 
-                
-               {/* Screenshot Section - URL Input Only */}
-               <div className="mt-2">
-                   <label className="block text-xs font-medium text-slate-400 mb-2">交易截圖 (Screenshot)</label>
-                   
-                   <div className="flex flex-col gap-3">
-                       {/* URL Input */}
-                       <div className="flex gap-2">
-                           <div className="relative flex-1">
-                               <input 
-                                   type="text"
-                                   placeholder="輸入圖片連結 (例如 TradingView URL)"
-                                   value={formData.screenshotUrl || ''}
-                                   onChange={(e) => setFormData(prev => ({ ...prev, screenshotUrl: e.target.value }))}
-                                   className={`${getInputClass('screenshotUrl')} pl-9`}
-                               />
-                               <LinkIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                                    {isDropdownOpen && (
+                                        <div 
+                                            ref={tagDropdownRef}
+                                            className="absolute top-full left-0 mt-2 min-w-[180px] w-auto max-w-[240px] bg-[#1f2937] border border-slate-600 rounded-xl shadow-2xl z-50 p-2 flex flex-col gap-1"
+                                        >
+                                            <div className="max-h-[200px] overflow-y-auto custom-scrollbar flex flex-col gap-1">
+                                                {items.map(item => {
+                                                    const isSelected = formData.tags?.includes(item.id);
+                                                    return (
+                                                        <button 
+                                                            key={item.id} 
+                                                            type="button" 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const currentItems = formData.tags || [];
+                                                                if (currentItems.includes(item.id)) {
+                                                                    setFormData(prev => ({ ...prev, tags: currentItems.filter(t => t !== item.id) }));
+                                                                } else {
+                                                                    setFormData(prev => ({ ...prev, tags: [...currentItems, item.id] }));
+                                                                }
+                                                            }} 
+                                                            className={`text-left text-xs px-2 py-1.5 rounded flex items-center justify-between transition-colors ${isSelected ? `${cat.color} bg-opacity-20 text-white` : 'text-slate-300 hover:bg-slate-700'}`}
+                                                        >
+                                                            <span>{item.name}</span>
+                                                            {isSelected && <Check size={12} className={cat.color.replace('bg-', 'text-')} />}
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                        {tags.length === 0 && <span className="text-xs text-slate-500 italic p-1">No tags available.</span>}
+                      </div>
+                   </div>
+
+                    
+                   {/* Screenshot Section - URL Input Only */}
+                   <div className="mt-2">
+                       <label className="block text-xs font-medium text-slate-400 mb-2">交易截圖 (Screenshot)</label>
+                       
+                       <div className="flex flex-col gap-3">
+                           {/* URL Input */}
+                           <div className="flex gap-2">
+                               <div className="relative flex-1">
+                                   <input 
+                                       type="text"
+                                       placeholder="輸入圖片連結 (例如 TradingView URL)"
+                                       value={formData.screenshotUrl || ''}
+                                       onChange={(e) => setFormData(prev => ({ ...prev, screenshotUrl: e.target.value }))}
+                                       className={`${getInputClass('screenshotUrl')} pl-9`}
+                                   />
+                                   <LinkIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                               </div>
                            </div>
                        </div>
+                       <p className="text-[10px] text-slate-500 mt-1">
+                           提示: 推薦使用 TradingView 連結 (如 https://www.tradingview.com/x/...)，讀取速度快且畫質佳。
+                       </p>
                    </div>
-                   <p className="text-[10px] text-slate-500 mt-1">
-                       提示: 推薦使用 TradingView 連結 (如 https://www.tradingview.com/x/...)，讀取速度快且畫質佳。
-                   </p>
-               </div>
 
-            </div>
+                </div>
+              </div>
           </div>
 
-          <div className="p-5 border-t border-slate-700/50 flex justify-end gap-3 bg-slate-800/30 rounded-b-2xl">
+          {/* Footer - Fixed */}
+          <div className="p-5 border-t border-slate-700/50 flex justify-end gap-3 bg-slate-800/30 rounded-b-2xl z-20 flex-shrink-0">
              <button type="button" onClick={onClose} className="px-5 py-2 text-sm text-slate-400 hover:text-white transition-colors">取消</button>
              <button 
                 type="submit" 
@@ -1254,6 +1263,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -100,12 +100,32 @@ export enum TradeDirection {
       // Time Range (HH:MM string, 24h)
       startTime?: string;
       endTime?: string;
+      exitStartTime?: string;
+      exitEndTime?: string;
+
+      // Duration Range (Minutes)
+      minDuration?: number;
+      maxDuration?: number;
 
       // Numeric Ranges
       minVolume?: number;
       maxVolume?: number;
       minPnL?: number;
       maxPnL?: number;
+
+      // NEW: Additional Numeric Ranges
+      minRR?: number;
+      maxRR?: number;
+      minSLSize?: number;
+      maxSLSize?: number;
+      minActualRisk?: number;
+      maxActualRisk?: number;
+      minActualRiskPct?: number;
+      maxActualRiskPct?: number;
+
+      includeRules: boolean; // New toggle for rule-specific filtering
+      excludeMode: boolean; // NEW: Toggle to exclude selected items
+      filterLogic: 'AND' | 'OR'; // NEW: Logic for combining filter categories
   }
 
   export interface TradeFilter {
