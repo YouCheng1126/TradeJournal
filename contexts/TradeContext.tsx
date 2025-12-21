@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { Trade, Strategy, TagCategory, Tag } from '../types';
+import { Trade, Strategy, TagCategory, Tag, GlobalFilterState } from '../types';
+import { calculatePnL } from '../utils/calculations';
 import { supabase, isSupabaseConfigured } from '../utils/supabaseClient';
 
 interface DateRange {
@@ -10,7 +11,7 @@ interface DateRange {
 
 interface TradeContextType {
   trades: Trade[]; // All trades
-  filteredTrades: Trade[]; // Trades within date range
+  filteredTrades: Trade[]; // Trades within date range AND filters
   strategies: Strategy[];
   
   // Tag System
@@ -20,6 +21,12 @@ interface TradeContextType {
   loading: boolean;
   dateRange: DateRange;
   setDateRange: (range: DateRange) => void;
+
+  // New Global Filters
+  filters: GlobalFilterState;
+  setFilters: (filters: GlobalFilterState) => void;
+  resetFilters: () => void;
+  activeFilterCount: number;
   
   addTrade: (trade: Trade) => Promise<void>;
   updateTrade: (trade: Trade) => Promise<void>;
@@ -92,6 +99,21 @@ const LS_STRATEGIES = 'zella_strategies';
 const LS_TAG_CATS = 'zella_tag_cats';
 const LS_TAGS = 'zella_tags';
 
+const DEFAULT_FILTERS: GlobalFilterState = {
+    status: [],
+    direction: [],
+    strategyIds: [],
+    ruleIds: [],
+    tagIds: [],
+    daysOfWeek: [],
+    startTime: '',
+    endTime: '',
+    minVolume: undefined,
+    maxVolume: undefined,
+    minPnL: undefined,
+    maxPnL: undefined
+};
+
 // Helper to load/save
 const loadLocal = <T,>(key: string, defaultVal: T): T => {
     try {
@@ -122,6 +144,9 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   
   // Default to "All Time" (null, null)
   const [dateRange, setDateRange] = useState<DateRange>({ startDate: null, endDate: null, label: 'All Time' });
+  
+  // Global Filters
+  const [filters, setFilters] = useState<GlobalFilterState>(DEFAULT_FILTERS);
 
   // Initialize Data
   useEffect(() => {
@@ -142,32 +167,125 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
-  // Filter Trades based on Date Range
+  // Filter Trades based on Date Range AND Advanced Filters
   const filteredTrades = useMemo(() => {
-      if (!dateRange.startDate || !dateRange.endDate) {
-          return trades;
+      let result = trades;
+
+      // 1. Date Range Filtering
+      if (dateRange.startDate && dateRange.endDate) {
+          // Convert selected range to YYYY-MM-DD strings (using local date as per picker selection)
+          const formatLocal = (d: Date) => {
+              const y = d.getFullYear();
+              const m = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              return `${y}-${m}-${day}`;
+          };
+          
+          const startStr = formatLocal(dateRange.startDate);
+          const endStr = formatLocal(dateRange.endDate);
+
+          result = result.filter(t => {
+              // Compare against Trade Date in NY Time (YYYY-MM-DD)
+              const tradeDateStr = new Intl.DateTimeFormat('en-CA', { 
+                  timeZone: 'America/New_York' 
+              }).format(new Date(t.entryDate));
+
+              return tradeDateStr >= startStr && tradeDateStr <= endStr;
+          });
       }
 
-      // Convert selected range to YYYY-MM-DD strings (using local date as per picker selection)
-      const formatLocal = (d: Date) => {
-          const y = d.getFullYear();
-          const m = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          return `${y}-${m}-${day}`;
-      };
-      
-      const startStr = formatLocal(dateRange.startDate);
-      const endStr = formatLocal(dateRange.endDate);
+      // 2. Advanced Filtering
+      result = result.filter(t => {
+          // Status
+          if (filters.status.length > 0 && !filters.status.includes(t.status)) return false;
+          
+          // Direction
+          if (filters.direction.length > 0 && !filters.direction.includes(t.direction)) return false;
 
-      return trades.filter(t => {
-          // Compare against Trade Date in NY Time (YYYY-MM-DD)
-          const tradeDateStr = new Intl.DateTimeFormat('en-CA', { 
-              timeZone: 'America/New_York' 
-          }).format(new Date(t.entryDate));
+          // Strategy (Playbook)
+          if (filters.strategyIds.length > 0) {
+              if (!t.playbookId || !filters.strategyIds.includes(t.playbookId)) return false;
+          }
 
-          return tradeDateStr >= startStr && tradeDateStr <= endStr;
+          // Rules Filtering
+          // If rules are selected, we assume "OR" logic (match any selected rule), 
+          // but scoped to the selected strategies. If a strategy is selected but NO rules of it are selected,
+          // it generally means "Any rules" (which is handled by selecting ALL rules by default in UI).
+          // However, if we uncheck a rule, we want to exclude trades that ONLY followed that rule?
+          // Standard filter logic: If ruleIds has items, the trade MUST have at least one of those rules.
+          if (filters.ruleIds.length > 0) {
+              const tradeRules = t.rulesFollowed || [];
+              const hasMatchingRule = filters.ruleIds.some(id => tradeRules.includes(id));
+              
+              // Edge case: If the trade belongs to a strategy that is selected, but NONE of its rules are in filter (unlikely due to UI default), 
+              // do we show it? Let's stick to strict: if rules filter is active, must match rules.
+              // But we only enforce this for trades belonging to the strategies that HAVE rules in the filter?
+              // Simple approach: If ruleIds is not empty, trade must match at least one.
+              // BUT, if I have Strategy A (All rules) and Strategy B (All rules). Trade in A matches.
+              // If I have Strategy A (All rules). Trade in B (not selected) -> Filtered out by strategyIds check above.
+              
+              if (!hasMatchingRule) return false;
+          }
+
+          // Tags (OR logic: if trade has ANY of the selected tags)
+          if (filters.tagIds.length > 0) {
+              const tradeTags = t.tags || [];
+              const hasTag = filters.tagIds.some(id => tradeTags.includes(id));
+              if (!hasTag) return false;
+          }
+
+          // Volume (Quantity)
+          if (filters.minVolume !== undefined && t.quantity < filters.minVolume) return false;
+          if (filters.maxVolume !== undefined && t.quantity > filters.maxVolume) return false;
+
+          // PnL
+          if (filters.minPnL !== undefined || filters.maxPnL !== undefined) {
+              const pnl = calculatePnL(t); 
+              if (filters.minPnL !== undefined && pnl < filters.minPnL) return false;
+              if (filters.maxPnL !== undefined && pnl > filters.maxPnL) return false;
+          }
+
+          // Day of Week
+          if (filters.daysOfWeek.length > 0) {
+              const date = new Date(t.entryDate);
+              const day = date.getDay(); // 0-6
+              if (!filters.daysOfWeek.includes(day)) return false;
+          }
+
+          // Time Range (Compare against Entry Time)
+          if (filters.startTime || filters.endTime) {
+              const tradeDate = new Date(t.entryDate);
+              const taiwanTime = new Date(tradeDate.getTime() + (8 * 60 * 60 * 1000));
+              const h = taiwanTime.getUTCHours().toString().padStart(2, '0');
+              const m = taiwanTime.getUTCMinutes().toString().padStart(2, '0');
+              const tradeTimeStr = `${h}:${m}`;
+
+              if (filters.startTime && tradeTimeStr < filters.startTime) return false;
+              if (filters.endTime && tradeTimeStr > filters.endTime) return false;
+          }
+
+          return true;
       });
-  }, [trades, dateRange]);
+
+      return result;
+  }, [trades, dateRange, filters]);
+
+  const activeFilterCount = useMemo(() => {
+      let count = 0;
+      if (filters.status.length > 0) count++;
+      if (filters.direction.length > 0) count++;
+      if (filters.strategyIds.length > 0) count++;
+      // Rules doesn't count as a separate "Top Level" filter category if strategy is counted, 
+      // but if we want to be granular we can. Let's count Strategy as 1.
+      if (filters.tagIds.length > 0) count++;
+      if (filters.daysOfWeek.length > 0) count++;
+      if (filters.startTime || filters.endTime) count++;
+      if (filters.minVolume !== undefined || filters.maxVolume !== undefined) count++;
+      if (filters.minPnL !== undefined || filters.maxPnL !== undefined) count++;
+      return count;
+  }, [filters]);
+
+  const resetFilters = () => setFilters(DEFAULT_FILTERS);
 
   // --- Fetch Functions ---
 
@@ -386,9 +504,6 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
   }, []);
 
-  /**
-   * DELETE TAG CATEGORY (MANUAL CASCADE)
-   */
   const deleteTagCategory = useCallback(async (id: string) => {
       const prevCats = [...tagCategories];
       const prevItems = [...tags];
@@ -483,6 +598,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     <TradeContext.Provider value={{ 
         trades, filteredTrades, strategies, loading, 
         dateRange, setDateRange, 
+        filters, setFilters, resetFilters, activeFilterCount,
         addTrade, updateTrade, deleteTrade, 
         addStrategy, updateStrategy, deleteStrategy,
         // Tag System

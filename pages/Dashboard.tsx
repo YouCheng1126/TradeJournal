@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useTrades } from '../contexts/TradeContext';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -15,8 +15,8 @@ import { endOfMonth, eachWeekOfInterval, addDays, isSameMonth, format, endOfWeek
 import startOfMonth from 'date-fns/startOfMonth';
 
 const MONTH_NAMES = [
-    "1月", "2月", "3月", "4月", "5月", "6月", 
-    "7月", "8月", "9月", "10月", "11月", "12月"
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 ];
 
 // Helper to generate specific ticks based on data range
@@ -76,6 +76,18 @@ export const Dashboard: React.FC = () => {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
+  
+  // Dropdown state for Month/Year selector
+  const [openDropdown, setOpenDropdown] = useState<'month' | 'year' | null>(null);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setOpenDropdown(null);
+    if (openDropdown) {
+        window.addEventListener('click', handleClickOutside);
+    }
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [openDropdown]);
 
   const handleMonthChange = (delta: number) => {
       let newMonth = month + delta;
@@ -85,8 +97,16 @@ export const Dashboard: React.FC = () => {
       setMonth(newMonth);
       setYear(newYear);
   };
-  const handleYearSelect = (e: React.ChangeEvent<HTMLSelectElement>) => setYear(parseInt(e.target.value));
-  const handleMonthSelect = (e: React.ChangeEvent<HTMLSelectElement>) => setMonth(parseInt(e.target.value));
+
+  const handleMonthSelect = (idx: number) => {
+      setMonth(idx);
+      setOpenDropdown(null);
+  };
+
+  const handleYearSelect = (y: number) => {
+      setYear(y);
+      setOpenDropdown(null);
+  };
 
   // Current view date object
   const viewDate = new Date(year, month, 1);
@@ -315,7 +335,16 @@ export const Dashboard: React.FC = () => {
       const start = startOfMonth(viewDate);
       const end = endOfMonth(viewDate);
       // Generate weeks starting on Monday
-      return eachWeekOfInterval({ start, end }, { weekStartsOn: 1 });
+      const allWeeks = eachWeekOfInterval({ start, end }, { weekStartsOn: 1 });
+      
+      // Filter out weeks where no day falls in the current month's weekday range (Mon-Fri)
+      // If a week has Mon-Fri ALL in the previous month, skip it.
+      return allWeeks.filter(weekStart => {
+          // Check Mon(0), Tue(1), Wed(2), Thu(3), Fri(4)
+          // If ANY of these days are in the current month, keep the week.
+          const weekDays = [0, 1, 2, 3, 4].map(offset => addDays(weekStart, offset));
+          return weekDays.some(day => isSameMonth(day, viewDate));
+      });
   }, [viewDate]);
 
   return (
@@ -399,18 +428,59 @@ export const Dashboard: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2">
                      <button onClick={() => handleMonthChange(-1)} className="p-1.5 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors"><ChevronLeft size={18} /></button>
-                     <div className="relative group">
-                        <select value={month} onChange={handleMonthSelect} className="appearance-none bg-slate-800 border border-slate-600 text-white text-sm font-medium py-1.5 pl-3 pr-8 rounded-lg focus:outline-none focus:border-primary cursor-pointer hover:bg-slate-700">
-                            {MONTH_NAMES.map((m, idx) => (<option key={m} value={idx}>{m}</option>))}
-                        </select>
-                        <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                     
+                     {/* Month Dropdown */}
+                     <div className="relative">
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); setOpenDropdown(openDropdown === 'month' ? null : 'month'); }}
+                            className="flex items-center gap-1 bg-slate-800 border border-slate-600 text-white text-sm font-bold py-1.5 px-3 rounded-lg hover:bg-slate-700 transition-colors"
+                        >
+                            {MONTH_NAMES[month]}
+                            <ChevronDown size={14} className="text-slate-400" />
+                        </button>
+                        {openDropdown === 'month' && (
+                            <div className="absolute top-full right-0 mt-2 bg-[#1f2937] border border-slate-600 rounded-xl shadow-2xl z-50 p-2 w-[280px]">
+                                <div className="grid grid-cols-3 gap-1">
+                                    {MONTH_NAMES.map((m, idx) => (
+                                        <button
+                                            key={m}
+                                            onClick={(e) => { e.stopPropagation(); handleMonthSelect(idx); }}
+                                            className={`text-sm py-2 rounded hover:bg-slate-700 transition-colors ${month === idx ? 'bg-primary text-white font-bold' : 'text-slate-300'}`}
+                                        >
+                                            {m}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                      </div>
-                     <div className="relative group">
-                        <select value={year} onChange={handleYearSelect} className="appearance-none bg-slate-800 border border-slate-600 text-white text-sm font-medium py-1.5 pl-3 pr-8 rounded-lg focus:outline-none focus:border-primary cursor-pointer hover:bg-slate-700">
-                            {Array.from({ length: 11 }, (_, i) => year - 5 + i).map(y => (<option key={y} value={y}>{y}</option>))}
-                        </select>
-                        <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+
+                     {/* Year Dropdown */}
+                     <div className="relative">
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); setOpenDropdown(openDropdown === 'year' ? null : 'year'); }}
+                            className="flex items-center gap-1 bg-slate-800 border border-slate-600 text-white text-sm font-bold py-1.5 px-3 rounded-lg hover:bg-slate-700 transition-colors"
+                        >
+                            {year}
+                            <ChevronDown size={14} className="text-slate-400" />
+                        </button>
+                        {openDropdown === 'year' && (
+                            <div className="absolute top-full right-0 mt-2 bg-[#1f2937] border border-slate-600 rounded-xl shadow-2xl z-50 p-2 w-[240px]">
+                                <div className="grid grid-cols-4 gap-1">
+                                    {Array.from({ length: 16 }, (_, i) => today.getFullYear() - 10 + i).map(y => (
+                                        <button
+                                            key={y}
+                                            onClick={(e) => { e.stopPropagation(); handleYearSelect(y); }}
+                                            className={`text-sm py-2 rounded hover:bg-slate-700 transition-colors ${year === y ? 'bg-primary text-white font-bold' : 'text-slate-300'}`}
+                                        >
+                                            {y}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                      </div>
+
                      <button onClick={() => handleMonthChange(1)} className="p-1.5 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors"><ChevronRight size={18} /></button>
                      <button onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }} className="ml-2 px-3 py-1.5 text-xs font-medium bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors">Today</button>
                 </div>

@@ -88,6 +88,26 @@ export enum TradeDirection {
     mae?: number; // Max Adverse Excursion amount
   }
   
+  // Advanced Filter State
+  export interface GlobalFilterState {
+      status: TradeStatus[];
+      direction: TradeDirection[];
+      strategyIds: string[];
+      ruleIds: string[]; // Added: Specific rules selected
+      tagIds: string[];
+      daysOfWeek: number[]; // 0 (Sun) - 6 (Sat)
+      
+      // Time Range (HH:MM string, 24h)
+      startTime?: string;
+      endTime?: string;
+
+      // Numeric Ranges
+      minVolume?: number;
+      maxVolume?: number;
+      minPnL?: number;
+      maxPnL?: number;
+  }
+
   export interface TradeFilter {
     dateRange: 'all' | 'today' | 'week' | 'month';
     strategyId?: string;

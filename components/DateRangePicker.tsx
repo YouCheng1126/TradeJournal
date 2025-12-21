@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
-import { format, endOfWeek, endOfMonth, isSameDay, isWithinInterval, addMonths } from 'date-fns';
-import startOfWeek from 'date-fns/startOfWeek';
+import React, { useState, useEffect } from 'react';
+import { format, endOfWeek, endOfMonth, isSameDay, isWithinInterval, addMonths, differenceInCalendarMonths } from 'date-fns';
+import setMonth from 'date-fns/setMonth';
+import setYear from 'date-fns/setYear';
 import startOfMonth from 'date-fns/startOfMonth';
-import subMonths from 'date-fns/subMonths';
+import startOfWeek from 'date-fns/startOfWeek';
 import subDays from 'date-fns/subDays';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import subMonths from 'date-fns/subMonths';
+import { ChevronLeft, ChevronRight, X, ChevronDown } from 'lucide-react';
 
 interface DateRangePickerProps {
     isOpen: boolean;
@@ -26,11 +28,56 @@ const PRESETS = [
     { label: 'All Time', getValue: () => [null, null] } 
 ];
 
+const SHORT_MONTHS = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+];
+
+// Generate year range (e.g., current year - 10 to + 5)
+const currentYear = new Date().getFullYear();
+const YEARS = Array.from({ length: 16 }, (_, i) => currentYear - 10 + i);
+
 export const DateRangePicker: React.FC<DateRangePickerProps> = ({ isOpen, onClose, onApply, initialStart, initialEnd }) => {
     const [startDate, setStartDate] = useState<Date | null>(initialStart);
     const [endDate, setEndDate] = useState<Date | null>(initialEnd);
-    const [viewDate, setViewDate] = useState<Date>(new Date());
+    
+    // Independent View States
+    const [leftViewDate, setLeftViewDate] = useState<Date>(initialStart || new Date());
+    const [rightViewDate, setRightViewDate] = useState<Date>(initialEnd || addMonths(new Date(), 1));
+
     const [activePreset, setActivePreset] = useState<string>('');
+    
+    // Dropdown State: { side: 'left'|'right', type: 'month'|'year' } | null
+    const [openDropdown, setOpenDropdown] = useState<{ side: 'left' | 'right', type: 'month' | 'year' } | null>(null);
+
+    // Initialize views to ensure they are not same month if possible
+    useEffect(() => {
+        if (isOpen) {
+            let lDate = initialStart || new Date();
+            let rDate = initialEnd || addMonths(lDate, 1);
+            
+            // If both are same month (e.g. single day selection), force right view to be next month
+            if (differenceInCalendarMonths(rDate, lDate) === 0) {
+                rDate = addMonths(lDate, 1);
+            }
+            // Ensure right is always > left
+            if (rDate <= lDate) {
+                rDate = addMonths(lDate, 1);
+            }
+
+            setLeftViewDate(startOfMonth(lDate));
+            setRightViewDate(startOfMonth(rDate));
+        }
+    }, [isOpen, initialStart, initialEnd]);
+
+    // Handle global click to close dropdowns
+    useEffect(() => {
+        const handleClickOutside = () => setOpenDropdown(null);
+        if (openDropdown) {
+            window.addEventListener('click', handleClickOutside);
+        }
+        return () => window.removeEventListener('click', handleClickOutside);
+    }, [openDropdown]);
 
     if (!isOpen) return null;
 
@@ -39,7 +86,15 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({ isOpen, onClos
         setStartDate(start);
         setEndDate(end);
         setActivePreset(label);
-        if (start) setViewDate(start);
+        
+        if (start) {
+            setLeftViewDate(startOfMonth(start));
+            let rDate = end ? startOfMonth(end) : addMonths(start, 1);
+            if (differenceInCalendarMonths(rDate, start) === 0) {
+                rDate = addMonths(start, 1);
+            }
+            setRightViewDate(rDate);
+        }
     };
 
     const handleDayClick = (day: Date) => {
@@ -48,32 +103,87 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({ isOpen, onClos
         // Scenario 1: Start fresh or reset
         if (!startDate || (startDate && endDate)) {
             setStartDate(day);
-            setEndDate(null); // Clear end date to allow single day selection flow
+            setEndDate(null); 
         } 
         // Scenario 2: Selecting End Date (or same day)
         else if (startDate && !endDate) {
             if (day < startDate) {
-                // If clicked date is before start, swap them
                 setEndDate(startDate); 
                 setStartDate(day);
             } else {
-                // If clicked date is same as start or after, set as end
                 setEndDate(day);
             }
         }
     };
 
-    const handlePrevMonth = () => {
-        setViewDate(subMonths(viewDate, 1));
+    // Navigation Handlers
+    const handlePrevMonth = (side: 'left' | 'right') => {
+        if (side === 'left') {
+            setLeftViewDate(prev => subMonths(prev, 1));
+        } else {
+            setRightViewDate(prev => subMonths(prev, 1));
+        }
     };
 
-    const handleNextMonth = () => {
-        setViewDate(addMonths(viewDate, 1));
+    const handleNextMonth = (side: 'left' | 'right') => {
+        if (side === 'left') {
+            setLeftViewDate(prev => addMonths(prev, 1));
+        } else {
+            setRightViewDate(prev => addMonths(prev, 1));
+        }
     };
 
-    const renderCalendar = (baseDate: Date) => {
-        const start = startOfMonth(baseDate);
-        const end = endOfMonth(baseDate);
+    // Dropdown Selection Handlers
+    const handleMonthSelect = (side: 'left' | 'right', monthIndex: number) => {
+        if (side === 'left') {
+            const newDate = setMonth(leftViewDate, monthIndex);
+            setLeftViewDate(newDate);
+            // Bidirectional Push: If new left >= right, push right to left + 1
+            if (differenceInCalendarMonths(rightViewDate, newDate) <= 0) {
+                setRightViewDate(addMonths(newDate, 1));
+            }
+        } else {
+            const newDate = setMonth(rightViewDate, monthIndex);
+            setRightViewDate(newDate);
+            // Bidirectional Push: If new right <= left, push left to right - 1
+            if (differenceInCalendarMonths(newDate, leftViewDate) <= 0) {
+                setLeftViewDate(subMonths(newDate, 1));
+            }
+        }
+        setOpenDropdown(null);
+    };
+
+    const handleYearSelect = (side: 'left' | 'right', year: number) => {
+        if (side === 'left') {
+            const newDate = setYear(leftViewDate, year);
+            setLeftViewDate(newDate);
+             if (differenceInCalendarMonths(rightViewDate, newDate) <= 0) {
+                setRightViewDate(addMonths(newDate, 1));
+            }
+        } else {
+            const newDate = setYear(rightViewDate, year);
+            setRightViewDate(newDate);
+             if (differenceInCalendarMonths(newDate, leftViewDate) <= 0) {
+                setLeftViewDate(subMonths(newDate, 1));
+            }
+        }
+        setOpenDropdown(null);
+    };
+
+
+    const renderCalendar = (side: 'left' | 'right') => {
+        const viewDate = side === 'left' ? leftViewDate : rightViewDate;
+        
+        // Constraint Check
+        const isAdjacent = differenceInCalendarMonths(rightViewDate, leftViewDate) === 1;
+        
+        // Left Calendar: Disable Next if adjacent to Right
+        // Right Calendar: Disable Prev if adjacent to Left
+        const disablePrev = side === 'right' && isAdjacent;
+        const disableNext = side === 'left' && isAdjacent;
+
+        const start = startOfMonth(viewDate);
+        const end = endOfMonth(viewDate);
         const startDay = start.getDay();
         const days = [];
         const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -83,13 +193,11 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({ isOpen, onClos
         }
 
         for (let d = 1; d <= end.getDate(); d++) {
-            const current = new Date(baseDate.getFullYear(), baseDate.getMonth(), d);
+            const current = new Date(viewDate.getFullYear(), viewDate.getMonth(), d);
             const isSelectedStart = startDate && isSameDay(current, startDate);
             const isSelectedEnd = endDate && isSameDay(current, endDate);
             
-            // Allow highlighting for single day selection (start == end)
             const isSingleDay = startDate && endDate && isSameDay(startDate, endDate) && isSameDay(current, startDate);
-
             const isInRange = startDate && endDate && !isSingleDay && isWithinInterval(current, { start: startDate, end: endDate });
             
             let btnClass = "w-8 h-8 flex items-center justify-center text-sm rounded-full transition-colors relative z-10 ";
@@ -113,9 +221,85 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({ isOpen, onClos
 
         return (
             <div className="w-64">
-                <div className="text-center font-semibold text-white mb-4">
-                    {format(baseDate, 'MMM yyyy')}
+                {/* Custom Header with Navigation & Dropdowns */}
+                <div className="flex justify-between items-center mb-4 px-1 relative z-20">
+                    <button 
+                        onClick={() => !disablePrev && handlePrevMonth(side)} 
+                        disabled={disablePrev}
+                        // Removed cursor-not-allowed, just opacity
+                        className={`p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-white transition-colors ${disablePrev ? 'opacity-30' : ''}`}
+                    >
+                        <ChevronLeft size={16} />
+                    </button>
+
+                    <div className="flex gap-2">
+                        {/* Month Dropdown Trigger */}
+                        <div className="relative">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); setOpenDropdown({ side, type: 'month' }); }}
+                                className="flex items-center gap-1 text-sm font-bold text-white hover:bg-slate-700 px-2 py-1 rounded transition-colors"
+                            >
+                                {format(viewDate, 'MMM')}
+                                <ChevronDown size={12} className="text-slate-500" />
+                            </button>
+                            {/* Month Dropdown List */}
+                            {openDropdown?.side === side && openDropdown.type === 'month' && (
+                                <div 
+                                    className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-24 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    {SHORT_MONTHS.map((m, idx) => (
+                                        <button
+                                            key={m}
+                                            onClick={() => handleMonthSelect(side, idx)}
+                                            className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-700 transition-colors ${viewDate.getMonth() === idx ? 'text-primary font-bold' : 'text-slate-300'}`}
+                                        >
+                                            {m}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Year Dropdown Trigger */}
+                        <div className="relative">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); setOpenDropdown({ side, type: 'year' }); }}
+                                className="flex items-center gap-1 text-sm font-bold text-white hover:bg-slate-700 px-2 py-1 rounded transition-colors"
+                            >
+                                {format(viewDate, 'yyyy')}
+                                <ChevronDown size={12} className="text-slate-500" />
+                            </button>
+                            {/* Year Dropdown List */}
+                            {openDropdown?.side === side && openDropdown.type === 'year' && (
+                                <div 
+                                    className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-20 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    {YEARS.map((y) => (
+                                        <button
+                                            key={y}
+                                            onClick={() => handleYearSelect(side, y)}
+                                            className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-700 transition-colors ${viewDate.getFullYear() === y ? 'text-primary font-bold' : 'text-slate-300'}`}
+                                        >
+                                            {y}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <button 
+                        onClick={() => !disableNext && handleNextMonth(side)} 
+                        disabled={disableNext}
+                        // Removed cursor-not-allowed, just opacity
+                        className={`p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-white transition-colors ${disableNext ? 'opacity-30' : ''}`}
+                    >
+                        <ChevronRight size={16} />
+                    </button>
                 </div>
+
                 <div className="grid grid-cols-7 gap-1 text-xs text-slate-500 mb-2 text-center">
                     {weekDays.map(wd => <div key={wd}>{wd}</div>)}
                 </div>
@@ -127,8 +311,12 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({ isOpen, onClos
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="bg-[#1f2937] border border-slate-700 rounded-xl shadow-2xl flex flex-col md:flex-row overflow-hidden max-w-4xl max-h-[90vh]">
+        <div className="fixed inset-0 z-[100]" onClick={onClose}>
+            {/* The actual modal content */}
+            <div 
+                className="fixed top-16 left-0 md:left-64 bg-[#1f2937] border border-slate-700 rounded-br-xl rounded-bl-xl shadow-2xl flex flex-col md:flex-row overflow-hidden max-w-4xl max-h-[85vh] z-[101] shadow-black/50"
+                onClick={(e) => e.stopPropagation()}
+            >
                 
                 <div className="w-40 bg-slate-800/50 border-r border-slate-700 p-2 flex flex-col gap-1 overflow-y-auto">
                     {PRESETS.map(preset => (
@@ -148,17 +336,9 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({ isOpen, onClos
                     </div>
 
                     <div className="flex flex-col md:flex-row gap-8 items-start relative px-8">
-                        <button onClick={handlePrevMonth} className="absolute left-0 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-full">
-                            <ChevronLeft />
-                        </button>
-                        
-                        {renderCalendar(viewDate)}
+                        {renderCalendar('left')}
                         <div className="hidden md:block w-px bg-slate-700 h-64 self-center" />
-                        {renderCalendar(addMonths(viewDate, 1))}
-
-                        <button onClick={handleNextMonth} className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-full">
-                            <ChevronRight />
-                        </button>
+                        {renderCalendar('right')}
                     </div>
 
                     <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-700">

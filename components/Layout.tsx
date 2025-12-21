@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, BookOpen, PieChart, FilePlus2, Database, Filter, Calendar as CalendarIcon, BookMarked, Tag as TagIcon } from 'lucide-react';
 import { useTrades } from '../contexts/TradeContext';
 import { DateRangePicker } from './DateRangePicker';
+import { FilterModal } from './FilterModal';
 import { format, isSameDay } from 'date-fns';
 
 interface LayoutProps {
@@ -30,20 +31,9 @@ const SidebarItem = ({ to, icon: Icon, label }: { to: string, icon: any, label: 
 };
 
 export const Layout: React.FC<LayoutProps> = ({ children, onOpenAddModal, onOpenTagManager }) => {
-  const { trades, dateRange, setDateRange } = useTrades();
+  const { trades, dateRange, setDateRange, activeFilterCount } = useTrades();
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
-
-  // Helper to display date label logic
-  const getDisplayLabel = () => {
-      if (dateRange.label) return dateRange.label;
-      if (dateRange.startDate) {
-          if (dateRange.endDate && isSameDay(dateRange.startDate, dateRange.endDate)) {
-              return format(dateRange.startDate, 'MM/dd');
-          }
-          return `${format(dateRange.startDate, 'MM/dd')} - ${dateRange.endDate ? format(dateRange.endDate, 'MM/dd') : '...'}`;
-      }
-      return 'All Time';
-  };
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
   return (
     <div className="flex h-screen bg-background text-text overflow-hidden">
@@ -78,15 +68,20 @@ export const Layout: React.FC<LayoutProps> = ({ children, onOpenAddModal, onOpen
         <header className="h-16 bg-surface/50 border-b border-slate-700 flex items-center justify-between px-6 backdrop-blur-md">
            {/* Filters moved here */}
            <div className="flex items-center gap-3">
-              <button className="flex items-center gap-2 bg-surface border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg text-sm text-slate-300 transition-all">
-                  <Filter size={14} /> Filters
+              <button 
+                  onClick={() => setIsFilterModalOpen(true)}
+                  className={`flex items-center gap-2 border px-3 py-1.5 rounded-lg text-sm transition-all ${activeFilterCount > 0 ? 'bg-primary/20 border-primary text-primary' : 'bg-surface border-slate-700 hover:border-slate-500 text-slate-300'}`}
+              >
+                  <Filter size={14} /> 
+                  Filters
+                  {activeFilterCount > 0 && <span className="bg-primary text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-1">{activeFilterCount}</span>}
               </button>
               <button 
                   onClick={() => setIsDatePickerOpen(true)}
                   className="flex items-center gap-2 bg-surface border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg text-sm text-slate-300 transition-all"
               >
                   <CalendarIcon size={14} /> 
-                  {getDisplayLabel()}
+                  Date range
               </button>
               
               <div className="ml-2 text-xs text-slate-500">
@@ -126,6 +121,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, onOpenAddModal, onOpen
          initialStart={dateRange.startDate}
          initialEnd={dateRange.endDate}
          onApply={(start, end, label) => setDateRange({ startDate: start, endDate: end, label })}
+      />
+      
+      {/* Advanced Filter Modal */}
+      <FilterModal 
+          isOpen={isFilterModalOpen}
+          onClose={() => setIsFilterModalOpen(false)}
       />
     </div>
   );
