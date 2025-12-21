@@ -14,6 +14,9 @@ export enum TradeDirection {
     LOSS = 'Loss',
   }
 
+  // Input Mode for Forms
+  export type InputMode = 'price' | 'points';
+
   // --- TAG SYSTEM (Renamed from Bag) ---
   export interface TagCategory {
       id: string;

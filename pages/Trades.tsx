@@ -5,7 +5,7 @@ import {
     calculateAvgWinLoss, calculateGrossStats, calculateStreaks
 } from '../utils/calculations';
 import { Edit, Trash2, Settings, X, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon } from 'lucide-react';
-import { TradeFormModal } from '../components/TradeFormModal';
+import { TradeFormModal } from '../components/TradeFormModal/index';
 import { Trade, TradeStatus } from '../types';
 import { SemiCircleGauge, ProfitFactorGauge, AvgWinLossBar, StreakWidget } from '../components/StatWidgets';
 

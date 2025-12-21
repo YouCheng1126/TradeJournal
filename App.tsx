@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { TradeProvider } from './contexts/TradeContext';
 import { Layout } from './components/Layout';
-import { Dashboard } from './pages/Dashboard';
+import { Dashboard } from './components/Dashboard/index';
 import { Journal } from './pages/Journal';
 import { Reports } from './pages/Reports';
 import { Trades } from './pages/Trades';
 import { StrategyPage } from './pages/Strategy';
 import { StrategyDetails } from './pages/StrategyDetails'; 
-import { TradeFormModal } from './components/TradeFormModal';
+import { TradeFormModal } from './components/TradeFormModal/index';
 import { TagManagementModal } from './components/TagManagementModal';
 
 const App: React.FC = () => {

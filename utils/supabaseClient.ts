@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { createClient } from '@supabase/supabase-js';
 
 // 預設使用合法的 URL 格式以避免 TypeError: Failed to construct 'URL'
 // 請將下方的 URL 和 Key 替換為您自己的 Supabase 專案資訊

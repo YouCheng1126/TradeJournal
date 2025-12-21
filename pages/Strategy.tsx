@@ -48,6 +48,7 @@ const WinRateRing = ({ percent }: { percent: number }) => {
 };
 
 export const StrategyPage: React.FC = () => {
+  const navigate = useNavigate();
   const { strategies, filteredTrades, deleteStrategy } = useTrades();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStrategy, setEditingStrategy] = useState<Strategy | undefined>(undefined);
@@ -56,7 +57,6 @@ export const StrategyPage: React.FC = () => {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   
   const menuRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
 
   // Close menu when clicking outside
   useEffect(() => {

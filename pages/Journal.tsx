@@ -4,7 +4,7 @@ import { calculatePnL, formatCurrency, calculateWinRate, calculateProfitFactor }
 import { ChevronDown, ChevronUp, Calendar as CalendarIcon, Edit, Trash2, Image as ImageIcon } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, YAxis, Tooltip as RechartsTooltip } from 'recharts';
 import { Trade } from '../types';
-import { TradeFormModal } from '../components/TradeFormModal';
+import { TradeFormModal } from '../components/TradeFormModal/index';
 import { useLocation } from 'react-router-dom';
 
 // Helpers
@@ -51,8 +51,6 @@ const DailySummaryCard: React.FC<DailySummaryCardProps> = ({ dateStr, trades, on
     
     // Parse the dateStr (YYYY-MM-DD) which is already in EST from grouping
     const dateObj = new Date(dateStr); 
-    // Fix: Just displaying the string is enough, or parse carefully to avoid local timezone shift visually
-    // We will use the dateStr directly for display logic to ensure consistency
 
     // Chart Data Generation & Gradient Offset Calculation
     const { chartData, offset } = React.useMemo(() => {
@@ -91,7 +89,6 @@ const DailySummaryCard: React.FC<DailySummaryCardProps> = ({ dateStr, trades, on
                     </div>
                     <div>
                         <h3 className="text-white font-bold text-lg">
-                             {/* Display as is, assuming dateStr is correct YYYY-MM-DD in EST */}
                              {dateStr} <span className="text-sm font-normal text-slate-500">(EST)</span>
                         </h3>
                     </div>
@@ -225,14 +222,10 @@ const DailySummaryCard: React.FC<DailySummaryCardProps> = ({ dateStr, trades, on
                                                                 alt="Trade Screenshot" 
                                                                 className="max-h-64 rounded border border-slate-700 shadow-md object-contain" 
                                                                 onError={(e) => {
-                                                                    // Fallback or styling if image fails to load directly (common with page URLs vs image URLs)
                                                                     const img = e.target as HTMLImageElement;
-                                                                    // We can't easily replace it with a text link here without re-rendering logic, 
-                                                                    // but we can make it look like a placeholder or keep the broken icon small.
-                                                                    img.style.display = 'none'; // Hide if broken, the link wrapper still works if text was inside, but here image is the content.
+                                                                    img.style.display = 'none'; 
                                                                 }}
                                                             />
-                                                            {/* If image fails or user just wants to click text */}
                                                             <span className="text-xs text-blue-400 underline ml-2">開啟圖片連結</span>
                                                         </a>
                                                     </div>
@@ -254,10 +247,10 @@ export const Journal: React.FC = () => {
   const { filteredTrades, deleteTrade } = useTrades(); 
   const [editingTrade, setEditingTrade] = useState<Trade | undefined>(undefined);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const location = useLocation();
   
   // Navigation State from Dashboard
-  const location = useLocation();
-  const focusDateStr = location.state?.focusDate as string | undefined;
+  const focusDateStr = (location.state as any)?.focusDate as string | undefined;
 
   // Group filtered trades by date (Desc) - USING EST/EDT
   const groupedTrades = React.useMemo(() => {

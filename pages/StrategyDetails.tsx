@@ -11,7 +11,7 @@ import { StrategyModal } from '../components/StrategyModal';
 type Tab = 'overview' | 'rules' | 'trades';
 
 export const StrategyDetails: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams();
   const navigate = useNavigate();
   const { strategies, filteredTrades, deleteStrategy } = useTrades();
   const [activeTab, setActiveTab] = useState<Tab>('overview');

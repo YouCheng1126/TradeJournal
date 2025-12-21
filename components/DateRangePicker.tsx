@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { format, endOfWeek, endOfMonth, isSameDay, isWithinInterval, addMonths, differenceInCalendarMonths } from 'date-fns';
-import setMonth from 'date-fns/setMonth';
-import setYear from 'date-fns/setYear';
-import startOfMonth from 'date-fns/startOfMonth';
-import startOfWeek from 'date-fns/startOfWeek';
-import subDays from 'date-fns/subDays';
-import subMonths from 'date-fns/subMonths';
+// Fix: Import everything from root to avoid multiple sub-path resolutions
+import { 
+    format, endOfWeek, endOfMonth, isSameDay, isWithinInterval, addMonths, differenceInCalendarMonths
+} from 'date-fns';
 import { ChevronLeft, ChevronRight, X, ChevronDown } from 'lucide-react';
 
 interface DateRangePickerProps {
@@ -15,6 +12,42 @@ interface DateRangePickerProps {
     initialStart: Date | null;
     initialEnd: Date | null;
 }
+
+// Helpers for missing date-fns exports
+const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
+
+const startOfWeek = (date: Date) => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay();
+    const diff = d.getDate() - day; // Adjust to Sunday
+    return new Date(d.setDate(diff));
+};
+
+const subDays = (date: Date, days: number) => {
+    const d = new Date(date);
+    d.setDate(d.getDate() - days);
+    return d;
+};
+
+const subMonths = (date: Date, months: number) => {
+    const d = new Date(date);
+    d.setDate(1); // Reset to 1st to avoid overflow
+    d.setMonth(d.getMonth() - months);
+    return d;
+};
+
+const setMonth = (date: Date, month: number) => {
+    const d = new Date(date);
+    d.setMonth(month);
+    return d;
+};
+
+const setYear = (date: Date, year: number) => {
+    const d = new Date(date);
+    d.setFullYear(year);
+    return d;
+};
 
 const PRESETS = [
     { label: 'Today', getValue: () => [new Date(), new Date()] },

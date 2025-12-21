@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, BookOpen, PieChart, FilePlus2, Database, Filter, Calendar as CalendarIcon, BookMarked, Tag as TagIcon } from 'lucide-react';
 import { useTrades } from '../contexts/TradeContext';
 import { DateRangePicker } from './DateRangePicker';
@@ -12,21 +12,21 @@ interface LayoutProps {
   onOpenTagManager: () => void;
 }
 
-const SidebarItem = ({ to, icon: Icon, label }: { to: string, icon: any, label: string }) => {
+const SidebarItem = ({ to, icon: Icon, label, currentPath }: { to: string, icon: any, label: string, currentPath: string }) => {
+  const isActive = to === '/' ? currentPath === '/' : currentPath.startsWith(to);
+  
   return (
-    <NavLink
+    <Link
       to={to}
-      className={({ isActive }) =>
-        `flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
-          isActive
-            ? 'bg-primary/20 text-primary border-r-2 border-primary'
-            : 'text-muted hover:bg-surface hover:text-white'
-        }`
-      }
+      className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+        isActive
+          ? 'bg-primary/20 text-primary border-r-2 border-primary'
+          : 'text-muted hover:bg-surface hover:text-white'
+      }`}
     >
       <Icon size={20} />
       <span>{label}</span>
-    </NavLink>
+    </Link>
   );
 };
 
@@ -34,6 +34,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, onOpenAddModal, onOpen
   const { trades, dateRange, setDateRange, activeFilterCount } = useTrades();
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const location = useLocation();
 
   return (
     <div className="flex h-screen bg-background text-text overflow-hidden">
@@ -47,11 +48,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, onOpenAddModal, onOpen
         </div>
 
         <nav className="flex-1 px-4 space-y-2">
-          <SidebarItem to="/" icon={LayoutDashboard} label="儀表板 (Dashboard)" />
-          <SidebarItem to="/trades" icon={Database} label="交易資料庫 (Trades)" />
-          <SidebarItem to="/journal" icon={BookOpen} label="交易日誌 (Journal)" />
-          <SidebarItem to="/reports" icon={PieChart} label="詳細報表 (Reports)" />
-          <SidebarItem to="/strategy" icon={BookMarked} label="交易策略 (Strategy)" />
+          <SidebarItem to="/" icon={LayoutDashboard} label="儀表板 (Dashboard)" currentPath={location.pathname} />
+          <SidebarItem to="/trades" icon={Database} label="交易資料庫 (Trades)" currentPath={location.pathname} />
+          <SidebarItem to="/journal" icon={BookOpen} label="交易日誌 (Journal)" currentPath={location.pathname} />
+          <SidebarItem to="/reports" icon={PieChart} label="詳細報表 (Reports)" currentPath={location.pathname} />
+          <SidebarItem to="/strategy" icon={BookMarked} label="交易策略 (Strategy)" currentPath={location.pathname} />
         </nav>
 
         <div className="p-4 border-t border-slate-700">
