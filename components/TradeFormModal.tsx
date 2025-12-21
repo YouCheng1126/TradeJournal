@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
 import { X, Save, AlertCircle, Calendar, Clock, ChevronDown, ChevronRight, ChevronLeft, Plus, ArrowUp, ArrowDown, Link as LinkIcon, Target, Check, Tag as TagIcon, ListChecks, CheckSquare, Square } from 'lucide-react';
 import { endOfMonth, format, isSameDay, addMonths } from 'date-fns';
@@ -35,87 +34,91 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
 
   // Strategy Rule Checklist State
   const [showRulesChecklist, setShowRulesChecklist] = useState(false);
-  const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({});
+  // Default style makes it invisible but rendered for measurement
+  const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({
+      position: 'fixed',
+      opacity: 0,
+      pointerEvents: 'none',
+      width: '320px' // Fixed width constant
+  });
   
   const rulesButtonRef = useRef<HTMLButtonElement>(null);
   const modalPanelRef = useRef<HTMLDivElement>(null); // Ref for the main modal panel
   const strategySelectRef = useRef<HTMLDivElement>(null); // Ref for the strategy dropdown wrapper
   const rulesPopupRef = useRef<HTMLDivElement>(null); // Wrapper ref for rules section
+  const fixedPopoverRef = useRef<HTMLDivElement>(null); // Ref for the actual popover content
 
   // Helper to get current strategy rules
   const selectedStrategy = useMemo(() => {
       return strategies.find(s => s.id === formData.playbookId);
   }, [formData.playbookId, strategies]);
 
-  // Smart Positioning for Rules Popover (Custom Logic)
+  // Smart Positioning for Rules Popover (Measure-Then-Show Logic)
   useLayoutEffect(() => {
-      if (showRulesChecklist && rulesButtonRef.current && selectedStrategy && modalPanelRef.current && strategySelectRef.current) {
+      if (showRulesChecklist && rulesButtonRef.current && selectedStrategy && modalPanelRef.current && strategySelectRef.current && fixedPopoverRef.current) {
           const panelRect = modalPanelRef.current.getBoundingClientRect();
           const btnRect = rulesButtonRef.current.getBoundingClientRect();
           const selectRect = strategySelectRef.current.getBoundingClientRect();
+          const contentHeight = fixedPopoverRef.current.offsetHeight; // Measure ACTUAL height
           const viewportHeight = window.innerHeight;
           
-          const POP_WIDTH = 320; // Matches w-80
-          const PANEL_TOP_OFFSET = 30; // Fixed offset from panel top as requested
+          const POP_WIDTH = 320; 
+          const PANEL_TOP_OFFSET = 30; // Fixed offset from panel top
 
           // 1. Horizontal Position
           // Rule: Right edge of popover aligns with Right edge of Strategy Input
           // Left = SelectRight - PopoverWidth
           let leftPos = selectRect.right - POP_WIDTH;
           
-          // Safety clamp for mobile/small screens
+          // Safety clamp
           if (leftPos < 10) leftPos = 10;
 
-          // 2. Estimate Content Height
-          let estimatedHeight = 90; // Header (~80px) + Padding
-          if (selectedStrategy.rules) {
-              selectedStrategy.rules.forEach(g => {
-                  // Legacy check
-                  if (typeof g === 'string') { 
-                      estimatedHeight += 50; 
-                  } else {
-                      // New structure: Group Header + Items
-                      estimatedHeight += 32; // Group Label
-                      estimatedHeight += (g.items.length * 44); // Item height (~36px) + gap
-                      estimatedHeight += 16; // Group margin
-                  }
-              });
-          }
-          
-          // 3. Vertical Position Logic
+          // 2. Vertical Position Logic
           const panelTopY = panelRect.top + PANEL_TOP_OFFSET;
           const btnBottomY = btnRect.bottom;
           
           // The "Space" defined in requirement: From PanelTop+30 to ButtonBottom
+          // This is the max height available for "Scenario A" (Bottom-to-Button alignment growing upwards)
           const availableSpace = btnBottomY - panelTopY;
 
-          let style: React.CSSProperties = {
+          let newStyle: React.CSSProperties = {
               position: 'fixed',
               left: `${leftPos}px`,
               width: `${POP_WIDTH}px`,
               zIndex: 60,
               display: 'flex',
               flexDirection: 'column',
+              opacity: 1, // Make visible
+              pointerEvents: 'auto',
           };
 
-          if (estimatedHeight < availableSpace) {
-              // Condition A: Height is smaller than the space
-              // Rule: Bottom of popover aligns with Bottom of Button
-              // Top = ButtonBottom - Height
-              style.top = `${btnBottomY - estimatedHeight}px`;
-              style.height = `${estimatedHeight}px`; // Fix height to match estimation for alignment
+          // Compare ACTUAL height with available space
+          if (contentHeight <= availableSpace) {
+              // Condition A: Content fits in the space above the button
+              // Align popover bottom to button bottom
+              // Top = ButtonBottom - ContentHeight
+              newStyle.top = `${btnBottomY - contentHeight}px`;
+              newStyle.height = `${contentHeight}px`; // Explicit height to prevent layout shift
           } else {
-              // Condition B: Height is larger than the space
-              // Rule: Top of popover aligns with PanelTop+30
-              style.top = `${panelTopY}px`;
-              // Extend downwards, but respect screen bottom margin
+              // Condition B: Content is too tall for the space above
+              // Align popover top to PanelTop + 30
+              newStyle.top = `${panelTopY}px`;
+              // Extend downwards, usually to bottom of screen with some buffer
               const maxAvailableHeight = viewportHeight - panelTopY - 20; 
-              style.maxHeight = `${maxAvailableHeight}px`;
+              newStyle.maxHeight = `${maxAvailableHeight}px`;
           }
 
-          setPopoverStyle(style);
+          setPopoverStyle(newStyle);
+      } else if (!showRulesChecklist) {
+          // Reset style when closed to be ready for next measurement
+          setPopoverStyle({
+              position: 'fixed',
+              opacity: 0,
+              pointerEvents: 'none',
+              width: '320px'
+          });
       }
-  }, [showRulesChecklist, selectedStrategy]);
+  }, [showRulesChecklist, selectedStrategy]); // Re-run if strategy (content) changes
 
   // State for active dropdown category (Replacing Accordion)
   const [activeTagDropdown, setActiveTagDropdown] = useState<string | null>(null); // For Tag selector
@@ -196,32 +199,13 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
         if (activeTagDropdown && tagDropdownRef.current && !tagDropdownRef.current.contains(event.target as Node)) {
             setActiveTagDropdown(null);
         }
-        // Handle Rules Checklist outside click (Fixed Positioning requires check against Ref or global close)
-        if (showRulesChecklist && rulesButtonRef.current && !rulesButtonRef.current.contains(event.target as Node)) {
-             // For fixed elements, if they are React Portals, standard propagation works.
-             // If inline but fixed, 'contains' might fail if the DOM structure is tricky, 
-             // but here the fixed div is rendered inside the component tree.
-             // We check if the click target is inside the *rendered popover* which is NOT inside rulesButtonRef
-             // Note: In React, event bubbling handles this mostly, but for global 'mousedown' we need to be careful.
-             // Since we don't have a ref directly on the fixed style div here (we apply style to a div below),
-             // let's rely on the fact that if it's NOT the button, close it. 
-             // BUT wait, if we click inside the popover, we shouldn't close.
-             // The popover is rendered conditionally below. We need a ref on it.
-             // We reuse rulesPopupRef but we need to attach it to the fixed div.
-             // Currently rulesPopupRef is on the wrapper relative div.
-             // Let's rely on the inner check: see render below.
-        }
     }
-    // We handle the specific close logic in the click handler attached to document,
-    // but better to put a ref on the fixed popover.
     
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [activeTagDropdown, showRulesChecklist]);
 
-  // We need a ref for the fixed popover to detect clicks inside it
-  const fixedPopoverRef = useRef<HTMLDivElement>(null);
-
+  // Separate outside click handler for the Fixed Popover to manage closing logic
   useEffect(() => {
       function handleFixedClickOutside(event: MouseEvent) {
           if (showRulesChecklist && 
@@ -1093,7 +1077,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({ isOpen, onClose,
                               <div 
                                 ref={fixedPopoverRef}
                                 style={popoverStyle}
-                                className="bg-[#1f2937] border border-slate-600 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+                                className="bg-[#1f2937] border border-slate-600 rounded-xl shadow-2xl overflow-hidden flex flex-col transition-opacity duration-75"
                               >
                                   {/* Header with Progress */}
                                   <div className="p-4 border-b border-slate-700 bg-slate-800/50 flex-shrink-0">
