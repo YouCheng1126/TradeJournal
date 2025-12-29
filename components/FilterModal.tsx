@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Filter, Check, SlidersHorizontal, Tag, Clock, BookOpen, ChevronDown, ChevronUp, ListChecks, Ban, Layers, ListFilter } from 'lucide-react';
+import { X, Filter, Check, SlidersHorizontal, Tag, Clock, BookOpen, ChevronDown, ChevronUp, ListChecks, Ban, Layers, ListFilter, GitMerge } from 'lucide-react';
 import { useTrades } from '../contexts/TradeContext';
 import { GlobalFilterState, TradeStatus, TradeDirection } from '../types';
 
@@ -52,7 +53,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
     return (
         <div className="flex flex-col mb-6" data-section-id={id}>
             <label className="flex items-center gap-3 cursor-pointer group select-none">
-                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isEnabled ? 'bg-primary border-primary' : 'bg-slate-800 border-slate-600 group-hover:border-slate-500'}`}>
+                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isEnabled ? 'bg-primary border-primary' : 'bg-slate-800/50 border-slate-600 group-hover:border-slate-500'}`}>
                     {isEnabled && <Check size={14} className="text-white" />}
                 </div>
                 <span className={`text-sm font-semibold ${isEnabled ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>
@@ -70,7 +71,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
                             <button 
                                 data-dropdown-trigger={id}
                                 onClick={(e) => { e.stopPropagation(); if (canExpand && onToggleDropdown) onToggleDropdown(); }}
-                                className={`w-full flex items-center justify-between bg-[#111827] border border-slate-700 rounded-lg px-4 py-3 text-sm transition-colors ${canExpand ? 'hover:border-slate-600' : 'cursor-default'} ${isDropdownOpen ? 'ring-1 ring-primary border-primary' : ''}`}
+                                className={`w-full flex items-center justify-between bg-slate-800/50 border border-slate-600 rounded-lg px-4 py-3 text-sm transition-colors ${canExpand ? 'hover:border-slate-500' : 'cursor-default'} ${isDropdownOpen ? 'ring-1 ring-primary border-primary' : ''}`}
                                 disabled={!canExpand}
                             >
                                 <span className="text-slate-400 truncate">{summaryText || 'Select...'}</span>
@@ -80,7 +81,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
                             {isDropdownOpen && canExpand && (
                                 <div 
                                     data-dropdown-content={id}
-                                    className="mt-1 bg-[#111827] border border-slate-700 rounded-lg p-2 max-h-60 overflow-y-auto custom-scrollbar shadow-lg z-20"
+                                    className="mt-1 bg-slate-800/50 border border-slate-600 rounded-lg p-2 max-h-60 overflow-y-auto custom-scrollbar shadow-lg z-20 backdrop-blur-md"
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     {children}
@@ -95,8 +96,8 @@ const FilterSection: React.FC<FilterSectionProps> = ({
 };
 
 const SubCheckbox = ({ label, checked, onChange, colorClass = "" }: any) => (
-    <label className="flex items-center gap-3 cursor-pointer group/item py-2 px-2 hover:bg-slate-800 rounded transition-colors">
-        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors flex-shrink-0 ${checked ? 'bg-primary border-primary' : 'border-slate-600 group-hover/item:border-slate-500 bg-slate-800'}`}>
+    <label className="flex items-center gap-3 cursor-pointer group/item py-2 px-2 hover:bg-slate-700/50 rounded transition-colors">
+        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors flex-shrink-0 ${checked ? 'bg-primary border-primary' : 'border-slate-600 group-hover/item:border-slate-500 bg-slate-800/50'}`}>
             {checked && <Check size={12} className="text-white" />}
         </div>
         <span className={`text-sm ${checked ? 'text-white' : 'text-slate-400'} ${colorClass}`}>{label}</span>
@@ -112,6 +113,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose }) => 
     const [enabledSections, setEnabledSections] = useState<Set<string>>(new Set());
     const [openDropdowns, setOpenDropdowns] = useState<Set<string>>(new Set());
     const [includeRules, setIncludeRules] = useState(filters.includeRules);
+    const [crossStrategies, setCrossStrategies] = useState(filters.crossStrategies);
     const [excludeMode, setExcludeMode] = useState(filters.excludeMode);
     const [filterLogic, setFilterLogic] = useState<'AND' | 'OR'>(filters.filterLogic);
 
@@ -119,6 +121,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose }) => 
         if (isOpen) {
             setLocalFilters(filters);
             setIncludeRules(filters.includeRules);
+            setCrossStrategies(filters.crossStrategies);
             setExcludeMode(filters.excludeMode);
             setFilterLogic(filters.filterLogic);
 
@@ -164,7 +167,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose }) => 
     if (!isOpen) return null;
 
     const handleApply = () => {
-        const finalFilters = { ...localFilters, includeRules, excludeMode, filterLogic };
+        const finalFilters = { ...localFilters, includeRules, crossStrategies, excludeMode, filterLogic };
         if (!enabledSections.has('status')) finalFilters.status = [];
         if (!enabledSections.has('side')) finalFilters.direction = [];
         if (!enabledSections.has('volume')) { finalFilters.minVolume = undefined; finalFilters.maxVolume = undefined; }
@@ -215,9 +218,10 @@ export const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose }) => 
             minRR: undefined, maxRR: undefined, minSLSize: undefined, maxSLSize: undefined,
             minActualRisk: undefined, maxActualRisk: undefined,
             minActualRiskPct: undefined, maxActualRiskPct: undefined,
-            includeRules: false, excludeMode: false, filterLogic: 'AND',
+            includeRules: false, crossStrategies: false, excludeMode: false, filterLogic: 'AND',
         };
-        setLocalFilters(reset); setEnabledSections(new Set()); setOpenDropdowns(new Set()); setIncludeRules(false); setExcludeMode(false); setFilterLogic('AND');
+        setLocalFilters(reset); setEnabledSections(new Set()); setOpenDropdowns(new Set()); 
+        setIncludeRules(false); setCrossStrategies(false); setExcludeMode(false); setFilterLogic('AND');
     };
 
     const toggleSectionEnabled = (id: string) => {
@@ -277,21 +281,22 @@ export const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose }) => 
 
     return (
         <div className="fixed inset-0 z-[100]" onClick={onClose}>
-            <div className="fixed top-16 left-0 md:left-64 bg-[#1f2937] w-full max-w-[500px] h-[520px] border border-slate-700 rounded-br-xl rounded-bl-xl shadow-2xl flex flex-col overflow-hidden z-[101] shadow-black/50" onClick={(e) => e.stopPropagation()}>
+            {/* Changed background from hardcoded hex to bg-surface */}
+            <div className="absolute top-16 left-0 md:left-64 bg-surface w-full max-w-[500px] h-full max-h-[80%] border border-slate-600 rounded-br-xl rounded-bl-xl shadow-2xl flex flex-col overflow-hidden z-[101] shadow-black/50" onClick={(e) => e.stopPropagation()}>
                 <div className="flex flex-1 overflow-hidden">
-                    <div className="w-[35%] border-r border-slate-700 bg-surface/50 p-3 space-y-1 overflow-y-auto">
+                    <div className="w-[35%] border-r border-slate-600 bg-slate-800/20 p-3 space-y-1 overflow-y-auto">
                         {CATEGORIES.map(cat => {
                             const Icon = cat.icon;
                             const isActive = activeCategory === cat.id;
                             return (
-                                <button key={cat.id} onClick={() => setActiveCategory(cat.id)} className={`w-full flex items-center justify-between px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 group ${isActive ? 'bg-primary text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                                <button key={cat.id} onClick={() => setActiveCategory(cat.id)} className={`w-full flex items-center justify-between px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 group ${isActive ? 'bg-primary text-white' : 'text-slate-400 hover:bg-slate-700'}`}>
                                     <div className="flex items-center gap-3"><Icon size={16} /><span>{cat.label}</span></div>
                                 </button>
                             );
                         })}
                     </div>
 
-                    <div className="w-[65%] bg-[#1f2937] flex flex-col overflow-hidden">
+                    <div className="w-[65%] bg-surface flex flex-col overflow-hidden">
                         <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
                             {activeCategory === 'general' && (
                                 <div className="pb-4">
@@ -304,43 +309,43 @@ export const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose }) => 
                                     
                                     <FilterSection id="volume" label="Volume" isEnabled={enabledSections.has('volume')} onToggleEnable={() => toggleSectionEnabled('volume')} isRangeInput={true}>
                                          <div className="flex items-center gap-6">
-                                            <input type="number" placeholder="Min" value={localFilters.minVolume || ''} onChange={e => setLocalFilters(prev => ({ ...prev, minVolume: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
-                                            <input type="number" placeholder="Max" value={localFilters.maxVolume || ''} onChange={e => setLocalFilters(prev => ({ ...prev, maxVolume: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
+                                            <input type="number" placeholder="Min" value={localFilters.minVolume || ''} onChange={e => setLocalFilters(prev => ({ ...prev, minVolume: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
+                                            <input type="number" placeholder="Max" value={localFilters.maxVolume || ''} onChange={e => setLocalFilters(prev => ({ ...prev, maxVolume: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
                                         </div>
                                     </FilterSection>
                                     
                                     <FilterSection id="pnl" label="Net P&L" isEnabled={enabledSections.has('pnl')} onToggleEnable={() => toggleSectionEnabled('pnl')} isRangeInput={true}>
                                          <div className="flex items-center gap-6">
-                                            <input type="number" placeholder="Min" value={localFilters.minPnL || ''} onChange={e => setLocalFilters(prev => ({ ...prev, minPnL: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
-                                            <input type="number" placeholder="Max" value={localFilters.maxPnL || ''} onChange={e => setLocalFilters(prev => ({ ...prev, maxPnL: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
+                                            <input type="number" placeholder="Min" value={localFilters.minPnL || ''} onChange={e => setLocalFilters(prev => ({ ...prev, minPnL: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
+                                            <input type="number" placeholder="Max" value={localFilters.maxPnL || ''} onChange={e => setLocalFilters(prev => ({ ...prev, maxPnL: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
                                         </div>
                                     </FilterSection>
 
                                     <FilterSection id="rr" label="R/R (R-multiple)" isEnabled={enabledSections.has('rr')} onToggleEnable={() => toggleSectionEnabled('rr')} isRangeInput={true}>
                                          <div className="flex items-center gap-6">
-                                            <input type="number" step="0.1" placeholder="Min" value={localFilters.minRR || ''} onChange={e => setLocalFilters(prev => ({ ...prev, minRR: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
-                                            <input type="number" step="0.1" placeholder="Max" value={localFilters.maxRR || ''} onChange={e => setLocalFilters(prev => ({ ...prev, maxRR: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
+                                            <input type="number" step="0.1" placeholder="Min" value={localFilters.minRR || ''} onChange={e => setLocalFilters(prev => ({ ...prev, minRR: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
+                                            <input type="number" step="0.1" placeholder="Max" value={localFilters.maxRR || ''} onChange={e => setLocalFilters(prev => ({ ...prev, maxRR: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
                                         </div>
                                     </FilterSection>
 
                                     <FilterSection id="slsize" label="SL Size (Points)" isEnabled={enabledSections.has('slsize')} onToggleEnable={() => toggleSectionEnabled('slsize')} isRangeInput={true}>
                                          <div className="flex items-center gap-6">
-                                            <input type="number" step="0.25" placeholder="Min" value={localFilters.minSLSize || ''} onChange={e => setLocalFilters(prev => ({ ...prev, minSLSize: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
-                                            <input type="number" step="0.25" placeholder="Max" value={localFilters.maxSLSize || ''} onChange={e => setLocalFilters(prev => ({ ...prev, maxSLSize: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
+                                            <input type="number" step="0.25" placeholder="Min" value={localFilters.minSLSize || ''} onChange={e => setLocalFilters(prev => ({ ...prev, minSLSize: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
+                                            <input type="number" step="0.25" placeholder="Max" value={localFilters.maxSLSize || ''} onChange={e => setLocalFilters(prev => ({ ...prev, maxSLSize: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
                                         </div>
                                     </FilterSection>
 
                                     <FilterSection id="actualrisk" label="Actual Risk (Points)" isEnabled={enabledSections.has('actualrisk')} onToggleEnable={() => toggleSectionEnabled('actualrisk')} isRangeInput={true}>
                                          <div className="flex items-center gap-6">
-                                            <input type="number" step="0.25" placeholder="Min" value={localFilters.minActualRisk || ''} onChange={e => setLocalFilters(prev => ({ ...prev, minActualRisk: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
-                                            <input type="number" step="0.25" placeholder="Max" value={localFilters.maxActualRisk || ''} onChange={e => setLocalFilters(prev => ({ ...prev, maxActualRisk: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
+                                            <input type="number" step="0.25" placeholder="Min" value={localFilters.minActualRisk || ''} onChange={e => setLocalFilters(prev => ({ ...prev, minActualRisk: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
+                                            <input type="number" step="0.25" placeholder="Max" value={localFilters.maxActualRisk || ''} onChange={e => setLocalFilters(prev => ({ ...prev, maxActualRisk: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
                                         </div>
                                     </FilterSection>
 
                                     <FilterSection id="actualriskpct" label="Actual Risk %" isEnabled={enabledSections.has('actualriskpct')} onToggleEnable={() => toggleSectionEnabled('actualriskpct')} isRangeInput={true}>
                                          <div className="flex items-center gap-6">
-                                            <input type="number" placeholder="Min" value={localFilters.minActualRiskPct || ''} onChange={e => setLocalFilters(prev => ({ ...prev, minActualRiskPct: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
-                                            <input type="number" placeholder="Max" value={localFilters.maxActualRiskPct || ''} onChange={e => setLocalFilters(prev => ({ ...prev, maxActualRiskPct: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
+                                            <input type="number" placeholder="Min" value={localFilters.minActualRiskPct || ''} onChange={e => setLocalFilters(prev => ({ ...prev, minActualRiskPct: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
+                                            <input type="number" placeholder="Max" value={localFilters.maxActualRiskPct || ''} onChange={e => setLocalFilters(prev => ({ ...prev, maxActualRiskPct: e.target.value ? Number(e.target.value) : undefined }))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
                                         </div>
                                     </FilterSection>
                                 </div>
@@ -363,20 +368,20 @@ export const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose }) => 
                                     </FilterSection>
                                     <FilterSection id="timerange" label="Entry Time" isEnabled={enabledSections.has('timerange')} onToggleEnable={() => toggleSectionEnabled('timerange')} isRangeInput={true}>
                                         <div className="flex items-center gap-6">
-                                            <input type="time" value={localFilters.startTime || ''} onChange={e => setLocalFilters(p => ({...p, startTime: e.target.value}))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
-                                            <input type="time" value={localFilters.endTime || ''} onChange={e => setLocalFilters(p => ({...p, endTime: e.target.value}))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
+                                            <input type="time" value={localFilters.startTime || ''} onChange={e => setLocalFilters(p => ({...p, startTime: e.target.value}))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
+                                            <input type="time" value={localFilters.endTime || ''} onChange={e => setLocalFilters(p => ({...p, endTime: e.target.value}))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
                                         </div>
                                     </FilterSection>
                                     <FilterSection id="exittimerange" label="Exit Time" isEnabled={enabledSections.has('exittimerange')} onToggleEnable={() => toggleSectionEnabled('exittimerange')} isRangeInput={true}>
                                         <div className="flex items-center gap-6">
-                                            <input type="time" value={localFilters.exitStartTime || ''} onChange={e => setLocalFilters(p => ({...p, exitStartTime: e.target.value}))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
-                                            <input type="time" value={localFilters.exitEndTime || ''} onChange={e => setLocalFilters(p => ({...p, exitEndTime: e.target.value}))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
+                                            <input type="time" value={localFilters.exitStartTime || ''} onChange={e => setLocalFilters(p => ({...p, exitStartTime: e.target.value}))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
+                                            <input type="time" value={localFilters.exitEndTime || ''} onChange={e => setLocalFilters(p => ({...p, exitEndTime: e.target.value}))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
                                         </div>
                                     </FilterSection>
                                     <FilterSection id="duration" label="Duration (Mins)" isEnabled={enabledSections.has('duration')} onToggleEnable={() => toggleSectionEnabled('duration')} isRangeInput={true}>
                                         <div className="flex items-center gap-6">
-                                            <input type="number" placeholder="Min" value={localFilters.minDuration || ''} onChange={e => setLocalFilters(p => ({...p, minDuration: e.target.value ? Number(e.target.value) : undefined}))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
-                                            <input type="number" placeholder="Max" value={localFilters.maxDuration || ''} onChange={e => setLocalFilters(p => ({...p, maxDuration: e.target.value ? Number(e.target.value) : undefined}))} className="flex-1 min-w-0 bg-[#111827] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
+                                            <input type="number" placeholder="Min" value={localFilters.minDuration || ''} onChange={e => setLocalFilters(p => ({...p, minDuration: e.target.value ? Number(e.target.value) : undefined}))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
+                                            <input type="number" placeholder="Max" value={localFilters.maxDuration || ''} onChange={e => setLocalFilters(p => ({...p, maxDuration: e.target.value ? Number(e.target.value) : undefined}))} className="flex-1 min-w-0 bg-slate-800/50 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none placeholder-slate-500" />
                                         </div>
                                     </FilterSection>
                                 </div>
@@ -384,7 +389,27 @@ export const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose }) => 
 
                             {activeCategory === 'playbook' && (
                                 <div>
-                                    <button onClick={() => setIncludeRules(!includeRules)} className={`flex items-center justify-center gap-2 w-1/4 py-2 mb-8 rounded-xl border transition-all font-bold text-sm shadow-lg ${includeRules ? 'bg-primary border-primary text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}><ListChecks size={18} /><span>Rules</span></button>
+                                    <div className="flex gap-2 mb-8 w-1/2">
+                                        <button 
+                                            onClick={() => setIncludeRules(!includeRules)} 
+                                            className={`flex items-center justify-center gap-2 flex-1 py-2 rounded-xl border transition-all font-bold text-sm shadow-lg ${includeRules ? 'bg-primary border-primary text-white' : 'bg-slate-800/50 border-slate-600 text-slate-400 hover:text-white'}`}
+                                        >
+                                            <ListChecks size={18} /><span>Rules</span>
+                                        </button>
+                                        
+                                        <button 
+                                            onClick={() => setCrossStrategies(!crossStrategies)} 
+                                            disabled={!includeRules}
+                                            className={`flex items-center justify-center gap-2 flex-1 py-2 rounded-xl border transition-all font-bold text-sm shadow-lg ${
+                                                !includeRules ? 'bg-slate-800/30 border-slate-700 text-slate-600 cursor-not-allowed' :
+                                                crossStrategies ? 'bg-indigo-500 border-indigo-500 text-white' : 'bg-slate-800/50 border-slate-600 text-slate-400 hover:text-white hover:border-slate-500'
+                                            }`}
+                                            title="Cross Strategy Filtering"
+                                        >
+                                            <GitMerge size={18} className={crossStrategies ? "rotate-180" : ""} /><span>Cross</span>
+                                        </button>
+                                    </div>
+
                                     {strategies.map(st => (
                                         <FilterSection 
                                             key={st.id} id={`strat-${st.id}`} label={st.name} isEnabled={enabledSections.has(`strat-${st.id}`)} onToggleEnable={() => toggleSectionEnabled(`strat-${st.id}`)} 
@@ -401,11 +426,11 @@ export const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose }) => 
                     </div>
                 </div>
 
-                <div className="h-16 px-6 border-t border-slate-700 bg-[#1f2937] flex justify-between items-center flex-shrink-0">
+                <div className="h-16 px-6 border-t border-slate-600 bg-surface flex justify-between items-center flex-shrink-0">
                     <div className="flex items-center gap-2">
                         <button onClick={handleReset} className="text-sm font-medium text-slate-400 hover:text-white transition-colors mr-2">Reset all</button>
                         
-                        <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+                        <div className="flex bg-slate-800/50 p-1 rounded-lg border border-slate-600">
                              <button 
                                 onClick={() => setFilterLogic('AND')}
                                 className={`px-2 py-1 rounded text-[10px] font-bold transition-all flex items-center gap-1 ${filterLogic === 'AND' ? 'bg-primary text-white' : 'text-slate-500 hover:text-slate-300'}`}
@@ -424,13 +449,13 @@ export const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose }) => 
 
                         <button 
                             onClick={() => setExcludeMode(!excludeMode)} 
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all shadow-md ${excludeMode ? 'bg-red-500 border-red-400 text-white shadow-red-500/20' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'}`}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all shadow-md ${excludeMode ? 'bg-red-500 border-red-400 text-white shadow-red-500/20' : 'bg-slate-800/50 border-slate-600 text-slate-400 hover:bg-slate-700'}`}
                         >
                             <Ban size={14} /> Exclude
                         </button>
                     </div>
                     <div className="flex gap-3">
-                        <button onClick={handleApply} className="px-5 py-2 rounded-lg bg-primary hover:bg-indigo-600 text-white text-sm font-bold shadow-lg transition-colors">Apply</button>
+                        <button onClick={handleApply} className="px-5 py-2 rounded-lg bg-primary hover:bg-primary-dark text-white text-sm font-bold shadow-lg transition-colors">Apply</button>
                     </div>
                 </div>
             </div>

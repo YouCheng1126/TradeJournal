@@ -1,12 +1,14 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { useTrades } from '../contexts/TradeContext';
+import { createPortal } from 'react-dom';
+import { useTrades } from '../../contexts/TradeContext';
 import { Plus, MoreHorizontal, Trash2, Edit } from 'lucide-react';
-import { StrategyModal } from '../components/StrategyModal';
+import { StrategyModal } from './components/StrategyModal';
 import { 
     calculatePnL, formatCurrency, calculateWinRate, calculateProfitFactor, calculateAvgWinLoss, calculateMaxDrawdown 
-} from '../utils/calculations';
+} from '../../utils/calculations';
 import { useNavigate } from 'react-router-dom';
-import { Strategy } from '../types';
+import { Strategy } from '../../types';
 
 // Simple Circular Progress for Win Rate
 const WinRateRing = ({ percent }: { percent: number }) => {
@@ -49,9 +51,11 @@ const WinRateRing = ({ percent }: { percent: number }) => {
 
 export const StrategyPage: React.FC = () => {
   const navigate = useNavigate();
-  const { strategies, filteredTrades, deleteStrategy } = useTrades();
+  const { strategies, filteredTrades, deleteStrategy, userSettings } = useTrades();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingStrategy, setEditingStrategy] = useState<Strategy | undefined>(undefined);
+  
+  // Delete State
+  const [strategyToDelete, setStrategyToDelete] = useState<string | null>(null);
   
   // Menu State
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -75,11 +79,11 @@ export const StrategyPage: React.FC = () => {
           // Use filteredTrades to respect date range from global context
           const trades = filteredTrades.filter(t => t.playbookId === st.id && t.exitPrice !== undefined);
           
-          const totalPnL = trades.reduce((acc, t) => acc + calculatePnL(t), 0);
+          const totalPnL = trades.reduce((acc, t) => acc + calculatePnL(t, userSettings.commissionPerUnit), 0);
           const winRate = calculateWinRate(trades);
-          const profitFactor = calculateProfitFactor(trades);
-          const { avgWin, avgLoss } = calculateAvgWinLoss(trades);
-          const maxDrawdown = calculateMaxDrawdown(trades);
+          const profitFactor = calculateProfitFactor(trades, userSettings.commissionPerUnit);
+          const { avgWin, avgLoss } = calculateAvgWinLoss(trades, userSettings.commissionPerUnit);
+          const maxDrawdown = calculateMaxDrawdown(trades, userSettings.commissionPerUnit);
           const tradeCount = trades.length;
           const expectancy = tradeCount > 0 ? totalPnL / tradeCount : 0;
           
@@ -101,10 +105,9 @@ export const StrategyPage: React.FC = () => {
               }
           };
       });
-  }, [strategies, filteredTrades]);
+  }, [strategies, filteredTrades, userSettings.commissionPerUnit]);
 
   const handleCreate = () => {
-      setEditingStrategy(undefined);
       setIsModalOpen(true);
   };
 
@@ -119,17 +122,24 @@ export const StrategyPage: React.FC = () => {
 
   const handleEdit = (e: React.MouseEvent, strategy: Strategy) => {
       e.stopPropagation();
-      setEditingStrategy(strategy);
-      setIsModalOpen(true);
+      // Navigate to details page with state to select Rules tab
+      navigate(`/strategy/${strategy.id}`, { state: { initialTab: 'rules' } });
       setActiveMenuId(null);
   };
 
-  // Direct Delete Function
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
+  // Open Confirm Modal
+  const confirmDelete = (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
-      // Directly delete without confirmation as requested
-      await deleteStrategy(id);
+      setStrategyToDelete(id);
       setActiveMenuId(null);
+  };
+
+  // Execute Delete
+  const handleBulkDelete = async () => {
+      if (strategyToDelete) {
+          await deleteStrategy(strategyToDelete);
+          setStrategyToDelete(null);
+      }
   };
 
   return (
@@ -139,12 +149,11 @@ export const StrategyPage: React.FC = () => {
         <div className="flex justify-between items-center pb-2 border-b border-slate-700/50">
             <div>
                 <h2 className="text-2xl font-bold text-white">My Strategies</h2>
-                <p className="text-slate-400 text-sm mt-1">Manage and analyze your trading playbooks.</p>
             </div>
             
             <button 
                 onClick={handleCreate}
-                className="bg-primary hover:bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold shadow-lg shadow-indigo-500/20 transition-all"
+                className="bg-primary hover:bg-purple-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold shadow-lg shadow-indigo-500/20 transition-all"
             >
                 <Plus size={16} /> Create Strategy
             </button>
@@ -158,8 +167,8 @@ export const StrategyPage: React.FC = () => {
                     onClick={() => handleCardClick(st.id)}
                     className="bg-surface rounded-xl border border-slate-700 overflow-visible hover:shadow-xl hover:border-slate-500 transition-all cursor-pointer group flex flex-col relative"
                 >
-                    {/* Top Color Bar */}
-                    <div className="h-1.5 w-full rounded-t-xl" style={{ backgroundColor: st.color || '#6366f1' }}></div>
+                    {/* Top Color Bar - Updated Default to Purple #8b5cf6 */}
+                    <div className="h-1.5 w-full rounded-t-xl" style={{ backgroundColor: st.color || '#8b5cf6' }}></div>
 
                     {/* Main Content */}
                     <div className="p-6 flex-1">
@@ -177,7 +186,7 @@ export const StrategyPage: React.FC = () => {
                             <div className="relative">
                                 <button 
                                     onClick={(e) => toggleMenu(e, st.id)}
-                                    className={`p-1 rounded transition-colors ${activeMenuId === st.id ? 'text-white bg-slate-700' : 'text-slate-500 hover:text-white hover:bg-slate-700'}`}
+                                    className={`p-1 rounded transition-colors ${activeMenuId === st.id ? 'text-white bg-slate-700' : 'text-slate-300 hover:text-white hover:bg-slate-700'}`}
                                 >
                                     <MoreHorizontal size={20} />
                                 </button>
@@ -185,18 +194,18 @@ export const StrategyPage: React.FC = () => {
                                 {activeMenuId === st.id && (
                                     <div 
                                         ref={menuRef}
-                                        className="absolute right-0 top-full mt-2 w-32 bg-[#1f2937] border border-slate-600 rounded-lg shadow-xl z-20 py-1 overflow-hidden"
+                                        className="absolute right-0 top-full mt-2 w-32 bg-[#475569] border border-slate-600 rounded-lg shadow-xl z-20 py-1 overflow-hidden"
                                         onClick={(e) => e.stopPropagation()}
                                     >
                                         <button 
                                             onClick={(e) => handleEdit(e, st)}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-300 hover:bg-slate-700 hover:text-white transition-colors border-b border-slate-700/50"
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800 hover:text-white transition-colors border-b border-slate-600/50"
                                         >
                                             <Edit size={14} /> Edit
                                         </button>
                                         <button 
-                                            onClick={(e) => handleDelete(e, st.id)}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-slate-700 transition-colors"
+                                            onClick={(e) => confirmDelete(e, st.id)}
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-600 hover:text-white transition-colors"
                                         >
                                             <Trash2 size={14} /> Delete
                                         </button>
@@ -263,8 +272,38 @@ export const StrategyPage: React.FC = () => {
         <StrategyModal 
             isOpen={isModalOpen}
             onClose={() => setIsModalOpen(false)}
-            initialData={editingStrategy}
         />
+
+        {/* Delete Confirmation Modal */}
+        {strategyToDelete && createPortal(
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="bg-surface border border-slate-600 p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center transform scale-100 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                    <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500 ring-4 ring-red-500/5">
+                        <Trash2 size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">Delete Strategy?</h3>
+                    <p className="text-slate-400 text-sm mb-8 leading-relaxed">
+                        Are you sure you want to delete this strategy?<br/>
+                        All associated trade tags will be preserved, but the strategy link will be removed.
+                    </p>
+                    <div className="flex gap-4 justify-center">
+                        <button 
+                            onClick={() => setStrategyToDelete(null)} 
+                            className="px-6 py-2.5 text-sm font-semibold text-slate-300 hover:text-white border border-slate-500 rounded-lg hover:bg-slate-600 transition-all flex-1"
+                        >
+                            Cancel
+                        </button>
+                        <button 
+                            onClick={handleBulkDelete} 
+                            className="px-6 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-500 rounded-lg shadow-lg shadow-red-500/20 transition-all flex-1"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </div>,
+            document.body
+        )}
     </div>
   );
 };

@@ -34,6 +34,9 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({
     };
     const off = gradientOffset();
 
+    // Lighter grid color for visibility against Slate 700 background
+    const gridStroke = "#475569"; 
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
@@ -54,7 +57,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({
                                     <stop offset={1} stopColor="#f87171" stopOpacity={0.7}/>
                                 </linearGradient>
                             </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                            <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
                             <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} minTickGap={20} />
                             <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} ticks={cumTicks} domain={cumDomain as [number, number]} interval={0} width={45} />
                             <Tooltip 
@@ -100,7 +103,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({
                 {chartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData} margin={{ top: 5, right: 2, bottom: -10, left: -3 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                            <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
                             <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} minTickGap={20} />
                             <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} ticks={dailyTicks} domain={dailyDomain as [number, number]} interval={0} width={45} />
                             <Tooltip 
@@ -156,7 +159,7 @@ export const ChartsSection: React.FC<ChartsSectionProps> = ({
                                     <stop offset="70%" stopColor="#ef4444" stopOpacity={0.7}/>
                                 </linearGradient>
                             </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                            <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
                             <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} minTickGap={20} />
                             <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} ticks={ddTicks} domain={ddDomain as [number, number]} interval={0} width={45} />
                             <Tooltip 

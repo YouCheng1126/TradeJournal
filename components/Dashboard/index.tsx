@@ -7,35 +7,45 @@ import { TopWidgets } from './TopWidgets';
 import { ZellaScoreWidget } from './ZellaScoreWidget';
 import { CalendarWidget } from './CalendarWidget';
 import { ChartsSection } from './ChartsSection';
+import { DayDetailsModal } from './DayDetailsModal';
+import { TradeStatus } from '../../types';
 
 export const Dashboard: React.FC = () => {
-  const { filteredTrades } = useTrades(); 
+  const { filteredTrades, userSettings } = useTrades(); 
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   const stats = useMemo(() => {
     const closedTrades = filteredTrades.filter(t => t.exitPrice !== undefined);
-    const totalPnL = closedTrades.reduce((acc, t) => acc + calculatePnL(t), 0);
-    const profitFactor = calculateProfitFactor(closedTrades);
-    const { avgWin, avgLoss } = calculateAvgWinLoss(closedTrades);
-    const { grossProfit, grossLoss } = calculateGrossStats(closedTrades);
-    const streakStats = calculateStreaks(closedTrades);
+    const totalPnL = closedTrades.reduce((acc, t) => acc + calculatePnL(t, userSettings.commissionPerUnit), 0);
+    const profitFactor = calculateProfitFactor(closedTrades, userSettings.commissionPerUnit);
+    const { avgWin, avgLoss } = calculateAvgWinLoss(closedTrades, userSettings.commissionPerUnit);
+    const { grossProfit, grossLoss } = calculateGrossStats(closedTrades, userSettings.commissionPerUnit);
+    const streakStats = calculateStreaks(closedTrades, userSettings.commissionPerUnit);
     
-    const winsCount = closedTrades.filter(t => calculatePnL(t) > 0).length;
-    const lossesCount = closedTrades.filter(t => calculatePnL(t) < 0).length;
-    const breakEvenCount = closedTrades.filter(t => calculatePnL(t) === 0).length;
+    // Updated Logic: Count based on Status
+    const winsCount = closedTrades.filter(t => t.status === TradeStatus.WIN || t.status === TradeStatus.SMALL_WIN).length;
+    const lossesCount = closedTrades.filter(t => t.status === TradeStatus.LOSS || t.status === TradeStatus.SMALL_LOSS).length;
+    const breakEvenCount = closedTrades.filter(t => t.status === TradeStatus.BREAK_EVEN).length;
     
     const totalMeaningfulTrades = winsCount + lossesCount;
     const adjustedWinRate = totalMeaningfulTrades > 0 ? Math.round((winsCount / totalMeaningfulTrades) * 100) : 0;
 
     const daysMap = new Map<string, number>();
     closedTrades.forEach(t => {
-        const dateKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(t.entryDate));
-        daysMap.set(dateKey, (daysMap.get(dateKey) || 0) + calculatePnL(t));
+        // Use local format for consistent day matching
+        const dateKey = format(new Date(t.entryDate), 'yyyy-MM-dd');
+        daysMap.set(dateKey, (daysMap.get(dateKey) || 0) + calculatePnL(t, userSettings.commissionPerUnit));
     });
     
-    const { score: zellaScore, details: zellaDetails } = calculateZellaScore(filteredTrades);
+    // Pass User Settings Max Drawdown to score calculation
+    const { score: zellaScore, details: zellaDetails } = calculateZellaScore(
+        filteredTrades, 
+        userSettings.commissionPerUnit, 
+        userSettings.maxDrawdown
+    );
 
     // --- Chart Data Preparation ---
     let chartData: any[] = [];
@@ -93,7 +103,20 @@ export const Dashboard: React.FC = () => {
         minCumVal, maxCumVal,
         minDrawdownVal
     };
-  }, [filteredTrades]);
+  }, [filteredTrades, userSettings.commissionPerUnit, userSettings.maxDrawdown]);
+
+  // Filter trades for the selected day in modal
+  const selectedDayTrades = useMemo(() => {
+      if (!selectedDate) return [];
+      const targetDateStr = format(selectedDate, 'yyyy-MM-dd');
+      
+      return filteredTrades.filter(t => {
+          if (t.exitPrice === undefined) return false;
+          // Use local format for consistent day matching
+          const tradeDateStr = format(new Date(t.entryDate), 'yyyy-MM-dd');
+          return tradeDateStr === targetDateStr;
+      }).sort((a, b) => new Date(a.entryDate).getTime() - new Date(b.entryDate).getTime()); // Sort by time ascending
+  }, [selectedDate, filteredTrades]);
 
   return (
     <div className="space-y-6 pb-10">
@@ -106,6 +129,7 @@ export const Dashboard: React.FC = () => {
             year={year} month={month} 
             setYear={setYear} setMonth={setMonth} 
             today={today}
+            onDayClick={(date) => setSelectedDate(date)}
           />
       </div>
 
@@ -114,6 +138,14 @@ export const Dashboard: React.FC = () => {
         minDailyVal={stats.minDailyVal} maxDailyVal={stats.maxDailyVal}
         minCumVal={stats.minCumVal} maxCumVal={stats.maxCumVal}
         minDrawdownVal={stats.minDrawdownVal}
+      />
+
+      {/* Daily Details Modal */}
+      <DayDetailsModal 
+          isOpen={!!selectedDate} 
+          onClose={() => setSelectedDate(null)} 
+          date={selectedDate}
+          trades={selectedDayTrades}
       />
     </div>
   );

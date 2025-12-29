@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { formatCurrency } from '../utils/calculations';
 
@@ -35,34 +36,7 @@ export const SemiCircleGauge = ({
                      {/* Background Track */}
                      <path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="#334155" strokeWidth="10" strokeLinecap="round" />
                      
-                     {/* Loss Segment (Red) - Starts at 0 (Left) */}
-                     {lossPct > 0 && (
-                         <path 
-                            d="M 15 60 A 45 45 0 0 1 105 60" 
-                            fill="none" 
-                            stroke="#ef4444" 
-                            strokeWidth="10"
-                            strokeLinecap={totalTrades === lossCount ? "round" : "butt"}
-                            strokeDasharray={`${lossLen} ${circumference}`}
-                            className="transition-all duration-1000 ease-out"
-                         />
-                     )}
-
-                     {/* Break Even Segment (Gray) - Starts after Loss */}
-                     {bePct > 0 && (
-                         <path 
-                            d="M 15 60 A 45 45 0 0 1 105 60" 
-                            fill="none" 
-                            stroke="#64748b" 
-                            strokeWidth="10" 
-                            strokeLinecap={totalTrades === breakEvenCount ? "round" : "butt"}
-                            strokeDasharray={`${beLen} ${circumference}`}
-                            strokeDashoffset={-lossLen}
-                            className="transition-all duration-1000 ease-out"
-                         />
-                     )}
-
-                     {/* Win Segment (Green) - Starts after Break Even */}
+                     {/* Win Segment (Green) - Starts at 0 (Left) */}
                      {winPct > 0 && (
                          <path 
                             d="M 15 60 A 45 45 0 0 1 105 60" 
@@ -71,7 +45,34 @@ export const SemiCircleGauge = ({
                             strokeWidth="10" 
                             strokeLinecap={totalTrades === winCount ? "round" : "butt"}
                             strokeDasharray={`${winLen} ${circumference}`}
-                            strokeDashoffset={-(lossLen + beLen)}
+                            className="transition-all duration-1000 ease-out"
+                         />
+                     )}
+
+                     {/* Break Even Segment (Gray) - Starts after Win */}
+                     {bePct > 0 && (
+                         <path 
+                            d="M 15 60 A 45 45 0 0 1 105 60" 
+                            fill="none" 
+                            stroke="#64748b" 
+                            strokeWidth="10" 
+                            strokeLinecap={totalTrades === breakEvenCount ? "round" : "butt"}
+                            strokeDasharray={`${beLen} ${circumference}`}
+                            strokeDashoffset={-winLen}
+                            className="transition-all duration-1000 ease-out"
+                         />
+                     )}
+
+                     {/* Loss Segment (Red) - Starts after Break Even (Right) */}
+                     {lossPct > 0 && (
+                         <path 
+                            d="M 15 60 A 45 45 0 0 1 105 60" 
+                            fill="none" 
+                            stroke="#ef4444" 
+                            strokeWidth="10"
+                            strokeLinecap={totalTrades === lossCount ? "round" : "butt"}
+                            strokeDasharray={`${lossLen} ${circumference}`}
+                            strokeDashoffset={-(winLen + beLen)}
                             className="transition-all duration-1000 ease-out"
                          />
                      )}
@@ -80,13 +81,13 @@ export const SemiCircleGauge = ({
             {/* Counts Legend - Increased spacing */}
             <div className="flex justify-center gap-6 w-full mt-2 px-1">
                 <div className="flex flex-col items-center">
-                    <div className="bg-red-500/20 text-red-500 rounded px-1.5 py-0.5 text-[10px] font-bold min-w-[20px] text-center">{lossCount}</div>
-                </div>
-                <div className="flex flex-col items-center">
-                    <div className="bg-slate-700 text-slate-400 rounded px-1.5 py-0.5 text-[10px] font-bold min-w-[20px] text-center">{breakEvenCount}</div>
-                </div>
-                <div className="flex flex-col items-center">
                     <div className="bg-emerald-500/20 text-emerald-500 rounded px-1.5 py-0.5 text-[10px] font-bold min-w-[20px] text-center">{winCount}</div>
+                </div>
+                <div className="flex flex-col items-center">
+                    <div className="bg-slate-500/20 text-slate-400 rounded px-1.5 py-0.5 text-[10px] font-bold min-w-[20px] text-center">{breakEvenCount}</div>
+                </div>
+                <div className="flex flex-col items-center">
+                    <div className="bg-red-500/20 text-red-500 rounded px-1.5 py-0.5 text-[10px] font-bold min-w-[20px] text-center">{lossCount}</div>
                 </div>
             </div>
         </div>

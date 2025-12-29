@@ -74,7 +74,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, onOpenAddModal, onOpen
            <div className="flex items-center gap-3">
               <button 
                   onClick={() => setIsFilterModalOpen(true)}
-                  className={`flex items-center gap-2 border px-3 py-1.5 rounded-lg text-sm transition-all ${activeFilterCount > 0 ? 'bg-primary/20 border-primary text-primary' : 'bg-surface border-slate-700 hover:bg-primary/20 hover:border-primary hover:text-primary text-slate-300'}`}
+                  className={`flex items-center gap-2 border px-3 py-1.5 rounded-lg text-sm transition-all ${activeFilterCount > 0 ? 'bg-primary/20 border-primary text-primary' : 'bg-surface border-slate-700 hover:border-slate-500 text-slate-300'}`}
               >
                   <Filter size={14} /> 
                   Filters
@@ -82,10 +82,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, onOpenAddModal, onOpen
               </button>
               <button 
                   onClick={() => setIsDatePickerOpen(true)}
-                  className="flex items-center gap-2 bg-surface border border-slate-700 hover:bg-primary/20 hover:border-primary hover:text-primary px-3 py-1.5 rounded-lg text-sm text-slate-300 transition-all"
+                  className="flex items-center gap-2 bg-surface border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg text-sm text-slate-300 transition-all"
               >
                   <CalendarIcon size={14} /> 
-                  {dateRange.label || 'Date range'}
+                  Date range
               </button>
               
               <div className="ml-2 text-xs text-slate-500 hidden sm:block">
@@ -95,24 +95,24 @@ export const Layout: React.FC<LayoutProps> = ({ children, onOpenAddModal, onOpen
 
            <div className="flex items-center gap-3">
                <button 
-                 onClick={onOpenUserSettings}
-                 className="flex items-center gap-2 bg-surface border border-slate-600 text-slate-300 hover:bg-primary/20 hover:border-primary hover:text-primary px-4 py-2 rounded-md text-sm font-medium transition-colors"
-               >
-                 <Settings size={18} />
-                 <span className="hidden sm:inline">User Settings</span>
-               </button>
-
-               <button 
                  onClick={onOpenTagManager}
-                 className="flex items-center gap-2 bg-surface border border-slate-600 text-slate-300 hover:bg-primary/20 hover:border-primary hover:text-primary px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                 className="flex items-center gap-2 bg-surface hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-600 px-4 py-2 rounded-md text-sm font-medium transition-colors"
                >
                  <TagIcon size={18} />
                  <span className="hidden sm:inline">Manage Tags</span>
                </button>
 
                <button 
+                 onClick={onOpenUserSettings}
+                 className="flex items-center gap-2 bg-surface hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-600 px-4 py-2 rounded-md text-sm font-medium transition-colors"
+               >
+                 <Settings size={18} />
+                 <span className="hidden sm:inline">User Settings</span>
+               </button>
+
+               <button 
                  onClick={onOpenAddModal}
-                 className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-lg shadow-indigo-500/20"
+                 className="flex items-center gap-2 bg-primary hover:bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-lg shadow-indigo-500/20"
                >
                  <FilePlus2 size={18} />
                  <span className="hidden sm:inline">新增交易</span>

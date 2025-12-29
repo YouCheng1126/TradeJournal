@@ -1,9 +1,10 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { endOfMonth, eachWeekOfInterval, addDays, isSameMonth, format, endOfWeek } from 'date-fns';
 import { Trade } from '../../types';
 import { calculatePnL, calculateRMultiple, formatCurrency } from '../../utils/calculations';
+import { useTrades } from '../../contexts/TradeContext';
 
 interface CalendarWidgetProps {
     filteredTrades: Trade[];
@@ -12,6 +13,7 @@ interface CalendarWidgetProps {
     setYear: (y: number) => void;
     setMonth: (m: number) => void;
     today: Date;
+    onDayClick: (date: Date) => void;
 }
 
 // Helpers
@@ -22,8 +24,8 @@ const MONTH_NAMES = [
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 ];
 
-export const CalendarWidget: React.FC<CalendarWidgetProps> = ({ filteredTrades, year, month, setYear, setMonth, today }) => {
-    const navigate = useNavigate();
+export const CalendarWidget: React.FC<CalendarWidgetProps> = ({ filteredTrades, year, month, setYear, setMonth, today, onDayClick }) => {
+    const { userSettings } = useTrades();
     const [openDropdown, setOpenDropdown] = useState<'month' | 'year' | null>(null);
 
     // Current view date object
@@ -66,19 +68,19 @@ export const CalendarWidget: React.FC<CalendarWidgetProps> = ({ filteredTrades, 
         
         const daysTrades = filteredTrades.filter(t => {
             if (t.exitPrice === undefined) return false;
-            // Compare against trade's NY date
-            const tradeDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(t.entryDate));
+            // Use local date formatting (Database time)
+            const tradeDateStr = format(new Date(t.entryDate), 'yyyy-MM-dd');
             return tradeDateStr === targetDateStr;
         });
     
-        const totalPnl = daysTrades.reduce((acc, t) => acc + calculatePnL(t), 0);
+        const totalPnl = daysTrades.reduce((acc, t) => acc + calculatePnL(t, userSettings.commissionPerUnit), 0);
         const tradeCount = daysTrades.length;
         let dailyWinRate = 0;
         let totalR = 0;
     
         if (tradeCount > 0) {
-            const wins = daysTrades.filter(t => calculatePnL(t) > 0).length;
-            const losses = daysTrades.filter(t => calculatePnL(t) < 0).length;
+            const wins = daysTrades.filter(t => calculatePnL(t, userSettings.commissionPerUnit) > 0).length;
+            const losses = daysTrades.filter(t => calculatePnL(t, userSettings.commissionPerUnit) < 0).length;
             const meaningful = wins + losses;
             if (meaningful > 0) {
                 dailyWinRate = Math.round((wins / meaningful) * 100);
@@ -89,21 +91,24 @@ export const CalendarWidget: React.FC<CalendarWidgetProps> = ({ filteredTrades, 
     };
 
     const getWeeklyStats = (start: Date, end: Date) => {
+        const startStr = getDateKey(start);
+        const endStr = getDateKey(end);
+
         const weeklyTrades = filteredTrades.filter(t => {
             if (t.exitPrice === undefined) return false;
-            const tradeDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(t.entryDate));
-            return tradeDateStr >= getDateKey(start) && tradeDateStr <= getDateKey(end);
+            const tradeDateStr = format(new Date(t.entryDate), 'yyyy-MM-dd');
+            return tradeDateStr >= startStr && tradeDateStr <= endStr;
         });
   
-        const weeklyPnL = weeklyTrades.reduce((acc, t) => acc + calculatePnL(t), 0);
+        const weeklyPnL = weeklyTrades.reduce((acc, t) => acc + calculatePnL(t, userSettings.commissionPerUnit), 0);
         const weeklyCount = weeklyTrades.length;
         
         let weeklyWinRate = 0;
         let totalR = 0;
   
         if (weeklyCount > 0) {
-            const wins = weeklyTrades.filter(t => calculatePnL(t) > 0).length;
-            const losses = weeklyTrades.filter(t => calculatePnL(t) < 0).length;
+            const wins = weeklyTrades.filter(t => calculatePnL(t, userSettings.commissionPerUnit) > 0).length;
+            const losses = weeklyTrades.filter(t => calculatePnL(t, userSettings.commissionPerUnit) < 0).length;
             const meaningful = wins + losses;
             if (meaningful > 0) {
                 weeklyWinRate = Math.round((wins / meaningful) * 100);
@@ -112,11 +117,6 @@ export const CalendarWidget: React.FC<CalendarWidgetProps> = ({ filteredTrades, 
         }
   
         return { weeklyPnL, weeklyCount, weeklyWinRate, totalR };
-    };
-
-    const handleDayClick = (date: Date) => {
-        const dateStr = getDateKey(date);
-        navigate('/journal', { state: { focusDate: dateStr } });
     };
 
     const calendarWeeks = useMemo(() => {
@@ -132,7 +132,7 @@ export const CalendarWidget: React.FC<CalendarWidgetProps> = ({ filteredTrades, 
 
     return (
         <div className="lg:col-span-2 bg-surface rounded-xl border border-slate-700/50 p-0 flex flex-col h-[600px]">
-            <div className="px-4 py-2 border-b border-slate-700 flex flex-col sm:flex-row justify-between items-center bg-slate-800/50 gap-4">
+            <div className="px-4 py-2 border-b border-slate-700 flex flex-col sm:flex-row justify-between items-center bg-slate-800/20 gap-4">
                 <div className="flex items-center gap-2">
                     <h3 className="font-bold text-white flex items-center gap-2">Trade Calendar</h3>
                 </div>
@@ -149,7 +149,7 @@ export const CalendarWidget: React.FC<CalendarWidgetProps> = ({ filteredTrades, 
                             <ChevronDown size={14} className="text-slate-400" />
                         </button>
                         {openDropdown === 'month' && (
-                            <div className="absolute top-full right-0 mt-2 bg-[#1f2937] border border-slate-600 rounded-xl shadow-2xl z-50 p-2 w-[280px]">
+                            <div className="absolute top-full right-0 mt-2 bg-surface border border-slate-600 rounded-xl shadow-2xl z-50 p-2 w-[280px]">
                                 <div className="grid grid-cols-3 gap-1">
                                     {MONTH_NAMES.map((m, idx) => (
                                         <button
@@ -175,7 +175,7 @@ export const CalendarWidget: React.FC<CalendarWidgetProps> = ({ filteredTrades, 
                             <ChevronDown size={14} className="text-slate-400" />
                         </button>
                         {openDropdown === 'year' && (
-                            <div className="absolute top-full right-0 mt-2 bg-[#1f2937] border border-slate-600 rounded-xl shadow-2xl z-50 p-2 w-[240px]">
+                            <div className="absolute top-full right-0 mt-2 bg-surface border border-slate-600 rounded-xl shadow-2xl z-50 p-2 w-[240px]">
                                 <div className="grid grid-cols-4 gap-1">
                                     {Array.from({ length: 16 }, (_, i) => today.getFullYear() - 10 + i).map(y => (
                                         <button
@@ -232,18 +232,19 @@ export const CalendarWidget: React.FC<CalendarWidgetProps> = ({ filteredTrades, 
                                     const isLoss = totalPnl < 0;
                                     const isBreakEven = hasTrades && totalPnl === 0;
 
-                                    let cellClass = "bg-[#2C3C4E] h-full rounded border border-slate-700/50 p-1 flex flex-col justify-between hover:border-slate-500 transition-colors cursor-pointer group relative";
-                                    let pnlClass = "text-2xl font-bold text-slate-400";
+                                    // Default background changed from #2C3C4E to bg-slate-600 (lighter dark)
+                                    let cellClass = "bg-slate-600 h-full rounded border border-slate-500/50 p-1 flex flex-col justify-between hover:border-slate-400 transition-colors cursor-pointer group relative";
+                                    let pnlClass = "text-2xl font-bold text-slate-300"; // Lighter text
 
                                     if (hasTrades) {
                                         if (isProfit) {
-                                            cellClass = "bg-[#0C412C] h-full rounded border border-green-700 p-1 flex flex-col justify-between hover:border-green-500 cursor-pointer group";
+                                            cellClass = "bg-emerald-900/80 h-full rounded border border-green-600 p-1 flex flex-col justify-between hover:border-green-400 cursor-pointer group";
                                             pnlClass = "text-2xl font-extrabold text-[#54B990]";
                                         } else if (isLoss) {
-                                            cellClass = "bg-[#491318] h-full rounded border border-red-700 p-1 flex flex-col justify-between hover:border-red-500 cursor-pointer group";
+                                            cellClass = "bg-red-900/80 h-full rounded border border-red-600 p-1 flex flex-col justify-between hover:border-red-400 cursor-pointer group";
                                             pnlClass = "text-2xl font-extrabold text-[#D14A58]";
                                         } else if (isBreakEven) {
-                                            cellClass = "bg-[#2C3C4E] h-full rounded border border-slate-600 p-1 flex flex-col justify-between hover:border-slate-400 cursor-pointer group";
+                                            cellClass = "bg-slate-600 h-full rounded border border-slate-500 p-1 flex flex-col justify-between hover:border-slate-300 cursor-pointer group";
                                             pnlClass = "text-2xl font-extrabold text-slate-300";
                                         }
                                     }
@@ -253,7 +254,7 @@ export const CalendarWidget: React.FC<CalendarWidgetProps> = ({ filteredTrades, 
                                     const isToday = currentKey === todayKey;
 
                                     return (
-                                        <div key={dayOffset} className={cellClass} onClick={() => handleDayClick(date)}>
+                                        <div key={dayOffset} className={cellClass} onClick={() => onDayClick(date)}>
                                             <div className="flex justify-end p-1">
                                                 <span className={`text-[10px] font-medium ${isToday ? 'bg-primary text-white w-4 h-4 rounded-full flex items-center justify-center' : 'text-slate-400'}`}>{day}</span>
                                             </div>
@@ -264,7 +265,7 @@ export const CalendarWidget: React.FC<CalendarWidgetProps> = ({ filteredTrades, 
                                                         <div className={pnlClass}>{formatCurrency(totalPnl)}</div>
                                                     </div>
                                                     
-                                                    <div className="flex justify-between items-end w-full px-1.5 pb-1 text-sm font-medium text-slate-400">
+                                                    <div className="flex justify-between items-end w-full px-1.5 pb-1 text-sm font-medium text-slate-300">
                                                         <span>{tradeCount} Trades</span>
                                                         <span>{totalR.toFixed(1)}R {dailyWinRate}%</span>
                                                     </div>
@@ -275,7 +276,7 @@ export const CalendarWidget: React.FC<CalendarWidgetProps> = ({ filteredTrades, 
                                 })}
 
                                 {/* Weekly Summary */}
-                                <div className="bg-slate-800 h-full rounded border border-slate-700 p-1 flex flex-col justify-between relative overflow-hidden group">
+                                <div className="bg-slate-700 h-full rounded border border-slate-600 p-1 flex flex-col justify-between relative overflow-hidden group">
                                     <div className="flex justify-start p-1"> 
                                         <span className="text-[10px] font-medium text-slate-400">Week {weekIdx + 1}</span>
                                     </div>

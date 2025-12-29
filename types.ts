@@ -127,6 +127,7 @@ export enum TradeDirection {
       maxActualRiskPct?: number;
 
       includeRules: boolean; // New toggle for rule-specific filtering
+      crossStrategies: boolean; // NEW: Cross-strategy rule matching
       excludeMode: boolean; // NEW: Toggle to exclude selected items
       filterLogic: 'AND' | 'OR'; // NEW: Logic for combining filter categories
   }
@@ -134,4 +135,9 @@ export enum TradeDirection {
   export interface TradeFilter {
     dateRange: 'all' | 'today' | 'week' | 'month';
     strategyId?: string;
+  }
+
+  export interface UserSettings {
+      maxDrawdown: number;
+      commissionPerUnit: number;
   }

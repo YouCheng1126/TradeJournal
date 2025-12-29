@@ -1,5 +1,6 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { Trade, Strategy, TagCategory, Tag, GlobalFilterState, TradeDirection } from '../types';
+import { Trade, Strategy, TagCategory, Tag, GlobalFilterState, TradeDirection, UserSettings } from '../types';
 import { calculatePnL, calculateRMultiple } from '../utils/calculations';
 import { supabase, isSupabaseConfigured } from '../utils/supabaseClient';
 
@@ -28,6 +29,10 @@ interface TradeContextType {
   resetFilters: () => void;
   activeFilterCount: number;
   
+  // User Settings
+  userSettings: UserSettings;
+  updateUserSettings: (settings: UserSettings) => void;
+
   addTrade: (trade: Trade) => Promise<void>;
   updateTrade: (trade: Trade) => Promise<void>;
   deleteTrade: (id: string) => Promise<void>;
@@ -98,6 +103,7 @@ const LS_TRADES = 'zella_trades';
 const LS_STRATEGIES = 'zella_strategies';
 const LS_TAG_CATS = 'zella_tag_cats';
 const LS_TAGS = 'zella_tags';
+const LS_SETTINGS = 'zella_user_settings';
 
 const DEFAULT_FILTERS: GlobalFilterState = {
     status: [],
@@ -125,8 +131,14 @@ const DEFAULT_FILTERS: GlobalFilterState = {
     minActualRiskPct: undefined,
     maxActualRiskPct: undefined,
     includeRules: false,
+    crossStrategies: false,
     excludeMode: false,
     filterLogic: 'AND',
+};
+
+const DEFAULT_USER_SETTINGS: UserSettings = {
+    maxDrawdown: 0,
+    commissionPerUnit: 0,
 };
 
 // Helper to load/save
@@ -155,9 +167,14 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState<DateRange>({ startDate: null, endDate: null, label: 'All Time' });
   const [filters, setFilters] = useState<GlobalFilterState>(DEFAULT_FILTERS);
+  const [userSettings, setUserSettings] = useState<UserSettings>(DEFAULT_USER_SETTINGS);
 
   useEffect(() => {
+    // Initial Load
     if (isSupabaseConfigured) {
+        // Load Settings from Supabase
+        fetchSettingsSupabase();
+
         Promise.all([
             fetchTradesSupabase(),
             fetchStrategiesSupabase(),
@@ -165,6 +182,8 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             fetchTagsSupabase()
         ]).finally(() => setLoading(false));
     } else {
+        // Fallback to LocalStorage
+        setUserSettings(loadLocal(LS_SETTINGS, DEFAULT_USER_SETTINGS));
         setTrades(loadLocal(LS_TRADES, []));
         setStrategies(loadLocal(LS_STRATEGIES, DUMMY_STRATEGIES));
         setTagCategories(loadLocal(LS_TAG_CATS, []));
@@ -172,6 +191,51 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setLoading(false);
     }
   }, []);
+
+  const fetchSettingsSupabase = async () => {
+      try {
+          // Fetch the single row (assumes only 1 row exists or we take the first one)
+          const { data, error } = await supabase.from('user_settings').select('*').limit(1).single();
+          
+          if (data) {
+              setUserSettings({
+                  maxDrawdown: Number(data.max_drawdown),
+                  commissionPerUnit: Number(data.commission_per_unit)
+              });
+          }
+      } catch (err) {
+          console.error('Error fetching user settings:', err);
+      }
+  };
+
+  const updateUserSettings = async (settings: UserSettings) => {
+      // Optimistic update
+      setUserSettings(settings);
+      
+      if (isSupabaseConfigured) {
+          try {
+              // Update the settings in DB (Assuming ID 1, or update all rows since it's single user logic)
+              // Using ID 1 based on the SQL setup script provided
+              const { error } = await supabase
+                  .from('user_settings')
+                  .update({
+                      max_drawdown: settings.maxDrawdown,
+                      commission_per_unit: settings.commissionPerUnit
+                  })
+                  .eq('id', 1);
+
+              if (error) {
+                  // Fallback: If ID 1 doesn't exist, try to insert it (Upsert logic simulation)
+                  // Or assume user ran the setup SQL correctly.
+                  console.error('Error updating settings in DB:', error.message);
+              }
+          } catch (e) {
+              console.error(e);
+          }
+      } else {
+          saveLocal(LS_SETTINGS, settings);
+      }
+  };
 
   const filteredTrades = useMemo(() => {
       let result = trades;
@@ -198,26 +262,129 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Check which filter categories are active
       const activeCategories: { key: string, check: (t: Trade) => boolean }[] = [];
 
-      // Status/Direction/Strategy: Trade has ONE value
-      if (filters.status.length > 0) 
-          activeCategories.push({ key: 'status', check: (t) => filters.status.includes(t.status) });
+      // Status/Direction: Trade has ONE value
+      if (filters.status.length > 0) {
+          activeCategories.push({ 
+              key: 'status', 
+              check: (t) => {
+                  // If strictly AND, selecting multiple distinct statuses should result in 0 trades
+                  if (filters.filterLogic === 'AND' && filters.status.length > 1) return false;
+                  return filters.status.includes(t.status);
+              } 
+          });
+      }
       
-      if (filters.direction.length > 0) 
-          activeCategories.push({ key: 'side', check: (t) => filters.direction.includes(t.direction) });
+      if (filters.direction.length > 0) {
+          activeCategories.push({ 
+              key: 'side', 
+              check: (t) => {
+                  if (filters.filterLogic === 'AND' && filters.direction.length > 1) return false;
+                  return filters.direction.includes(t.direction);
+              } 
+          });
+      }
       
-      if (filters.strategyIds.length > 0) 
-          activeCategories.push({ key: 'strat', check: (t) => t.playbookId ? filters.strategyIds.includes(t.playbookId) : false });
+      // Strategy Filtering Logic
+      // Logic: If 'includeRules' is on, we identify strategies that are only selected because their rules are checked.
+      // We remove these from the strict "Strategy ID" filter to avoid double counting or parent-child OR issues.
+      
+      const strategiesWithSelectedRules = new Set<string>();
+      if (filters.includeRules && filters.ruleIds.length > 0) {
+          strategies.forEach(s => {
+              const hasSelectedRule = s.rules?.some(g => 
+                  typeof g !== 'string' && g.items.some(i => filters.ruleIds.includes(i.id))
+              );
+              if (hasSelectedRule) strategiesWithSelectedRules.add(s.id);
+          });
+      }
+
+      // Only filter by Strategy ID if it's NOT just a container for selected rules
+      // UNLESS CrossStrategy is on, in which case we ignore strategy IDs entirely if Rules are present
+      const effectiveStrategyIds = filters.strategyIds.filter(id => !strategiesWithSelectedRules.has(id));
+      const ignoreStrategyFilter = filters.crossStrategies && filters.ruleIds.length > 0;
+
+      if (effectiveStrategyIds.length > 0 && !ignoreStrategyFilter) {
+          activeCategories.push({ 
+              key: 'strat', 
+              check: (t) => {
+                  // If strictly AND, selecting multiple distinct strategies should result in 0 trades
+                  // (A trade cannot belong to Strategy A AND Strategy B)
+                  if (filters.filterLogic === 'AND' && effectiveStrategyIds.length > 1) return false;
+                  return t.playbookId ? effectiveStrategyIds.includes(t.playbookId) : false;
+              } 
+          });
+      }
 
       // Rules: Trade can have MULTIPLE values. 
-      if (filters.includeRules && filters.ruleIds.length > 0) 
+      if (filters.includeRules && filters.ruleIds.length > 0) {
           activeCategories.push({ key: 'rules', check: (t) => {
               const tradeRules = t.rulesFollowed || [];
+              
+              // Cross Strategy Logic
+              if (filters.crossStrategies) {
+                  // 1. Get definitions (Group Name + Text) of selected rule IDs
+                  const selectedDefs = new Set<string>();
+                  strategies.forEach(s => {
+                      s.rules?.forEach(g => {
+                          if(typeof g === 'string') return;
+                          g.items.forEach(i => {
+                              if (filters.ruleIds.includes(i.id)) {
+                                  selectedDefs.add(`${g.name.trim()}::${i.text.trim()}`);
+                              }
+                          });
+                      });
+                  });
+
+                  if (filters.filterLogic === 'AND') {
+                        // Strict Cross Matching: Trade must match ALL selected *Definitions*
+                        const currentStrat = strategies.find(s => s.id === t.playbookId);
+                        if (!currentStrat) return false;
+
+                        const tradeRuleDefs = new Set<string>();
+                        currentStrat.rules?.forEach(g => {
+                            if(typeof g === 'string') return;
+                            g.items.forEach(i => {
+                                if (tradeRules.includes(i.id)) {
+                                    tradeRuleDefs.add(`${g.name.trim()}::${i.text.trim()}`);
+                                }
+                            });
+                        });
+
+                        // Check if all selected definitions are present in trade
+                        for (let req of selectedDefs) {
+                            if (!tradeRuleDefs.has(req)) return false;
+                        }
+                        return true;
+                  } else {
+                      // OR Logic: Does trade have ANY rule matching the expanded list?
+                      // We need to check if ANY of the trade's rules match ANY of the selected definitions
+                      // Expand selected defs to ALL possible IDs first
+                      const expandedIds = new Set<string>();
+                      strategies.forEach(s => {
+                          s.rules?.forEach(g => {
+                              if(typeof g === 'string') return;
+                              g.items.forEach(i => {
+                                  const key = `${g.name.trim()}::${i.text.trim()}`;
+                                  if (selectedDefs.has(key)) {
+                                      expandedIds.add(i.id);
+                                  }
+                              });
+                          });
+                      });
+                      return tradeRules.some(id => expandedIds.has(id));
+                  }
+              }
+
+              // Standard ID Matching (No Cross)
+              // If Global Logic is OR, we treat multiple selected rules as OR (Match Any of selected)
+              // If Global Logic is AND, we treat multiple selected rules as AND (Match All of selected)
               if (filters.filterLogic === 'AND') {
                   return filters.ruleIds.every(id => tradeRules.includes(id));
               } else {
                   return filters.ruleIds.some(id => tradeRules.includes(id));
               }
           }});
+      }
 
       // Tags: Trade can have MULTIPLE values.
       if (filters.tagIds.length > 0) 
@@ -242,7 +409,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           activeCategories.push({ key: 'vol', check: (t) => checkRange(t.quantity, filters.minVolume, filters.maxVolume) });
 
       if (filters.minPnL !== undefined || filters.maxPnL !== undefined)
-          activeCategories.push({ key: 'pnl', check: (t) => checkRange(calculatePnL(t), filters.minPnL, filters.maxPnL) });
+          activeCategories.push({ key: 'pnl', check: (t) => checkRange(calculatePnL(t, userSettings.commissionPerUnit), filters.minPnL, filters.maxPnL) });
 
       if (filters.minRR !== undefined || filters.maxRR !== undefined)
           activeCategories.push({ key: 'rr', check: (t) => checkRange(calculateRMultiple(t) || 0, filters.minRR, filters.maxRR) });
@@ -307,8 +474,10 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           let matches = false;
           
           if (filters.filterLogic === 'AND') {
+              // Strictly must match every single category rule
               matches = activeCategories.every(cat => cat.check(t));
           } else {
+              // OR Logic: Matches at least one category
               matches = activeCategories.some(cat => cat.check(t));
           }
 
@@ -316,7 +485,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
       return result;
-  }, [trades, dateRange, filters]);
+  }, [trades, dateRange, filters, userSettings.commissionPerUnit, strategies]);
 
   const activeFilterCount = useMemo(() => {
       let count = 0;
@@ -372,12 +541,28 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const addTrade = useCallback(async (trade: Trade) => {
     if (isSupabaseConfigured) {
-        const { tags: tradeTags, rulesFollowed, ...tradeData } = trade;
+        // Remove 'id' so Supabase generates it. Remove 'tags' and 'rulesFollowed' from top level to put in proper fields.
+        const { tags: tradeTags, rulesFollowed, id, ...tradeData } = trade;
         const dbPayload: any = { ...tradeData, tags: tradeTags || [], rulesFollowed: rulesFollowed || [] };
-        delete dbPayload.netPnL; delete dbPayload.rMultiple; delete dbPayload.mfe; delete dbPayload.mae;
+        
+        // Remove calculated fields
+        delete dbPayload.netPnL; 
+        delete dbPayload.rMultiple; 
+        delete dbPayload.mfe; 
+        delete dbPayload.mae;
+        
         const { data, error } = await supabase.from('trades').insert([dbPayload]).select();
+        
         if (error) throw new Error(error.message || 'Failed to add trade');
-        if (data) setTrades((prev) => [{ ...data[0], id: String(data[0].id), tags: data[0].tags || [], rulesFollowed: data[0].rulesFollowed || [] }, ...prev]);
+        
+        if (data) {
+            setTrades((prev) => [{ 
+                ...data[0], 
+                id: String(data[0].id), 
+                tags: data[0].tags || [], 
+                rulesFollowed: data[0].rulesFollowed || [] 
+            }, ...prev]);
+        }
     } else {
         setTrades((prev) => { const newTrades = [trade, ...prev]; saveLocal(LS_TRADES, newTrades); return newTrades; });
     }
@@ -492,6 +677,7 @@ export const TradeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         trades, filteredTrades, strategies, loading, 
         dateRange, setDateRange, 
         filters, setFilters, resetFilters, activeFilterCount,
+        userSettings, updateUserSettings,
         addTrade, updateTrade, deleteTrade, addStrategy, updateStrategy, deleteStrategy,
         tagCategories, tags, addTagCategory, deleteTagCategory, addTag, deleteTag
     }}>

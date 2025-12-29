@@ -1,14 +1,16 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTrades } from '../contexts/TradeContext';
 import { 
     calculatePnL, formatCurrency, calculateRMultiple, calculateProfitFactor, 
-    calculateAvgWinLoss, calculateGrossStats, calculateStreaks
+    calculateAvgWinLoss, calculateGrossStats, calculateStreaks,
+    getMultiplier, getStatusWeight, getTradeMetrics
 } from '../utils/calculations';
 import { Settings, X, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon, Trash2, CheckSquare, Square, AlertTriangle } from 'lucide-react';
 import { Trade, TradeStatus } from '../types';
 import { TopWidgets } from '../components/Dashboard/TopWidgets';
-import { TradeInfoModal } from '../components/TradeInfoModal';
+import { TradeInfoModal } from '../components/TradeModal';
 
 // Column Definition
 interface ColumnDef {
@@ -17,7 +19,6 @@ interface ColumnDef {
 }
 
 // Sorted Alphabetically for the Column Selector Modal
-// Removed 'screenshot' (Img) as requested
 const ALL_COLUMNS: ColumnDef[] = [
     { id: 'actualRisk', label: 'Actual Risk' },
     { id: 'actualRiskPct', label: 'Actual Risk %' },
@@ -41,13 +42,12 @@ const ALL_COLUMNS: ColumnDef[] = [
     { id: 'quantity', label: 'Volume' },
 ];
 
-// Adjusted default order: openTime next to openDate
-const DEFAULT_COLUMNS = ['openDate', 'openTime', 'side', 'status', 'entryPrice', 'exitPrice', 'netPnL', 'rMultiple', 'actualRisk', 'duration'];
+const DEFAULT_COLUMNS = ['openDate', 'openTime', 'side', 'status', 'entryPrice', 'exitPrice', 'netPnL', 'rMultiple', 'actualRisk', 'actualRiskPct', 'duration'];
 
 type SortDirection = 'asc' | 'desc' | null;
 
 export const Trades: React.FC = () => {
-  const { filteredTrades, deleteTrade, strategies } = useTrades(); 
+  const { filteredTrades, deleteTrade, strategies, userSettings } = useTrades(); 
   const [editingTrade, setEditingTrade] = useState<Trade | undefined>(undefined);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
@@ -67,7 +67,6 @@ export const Trades: React.FC = () => {
 
   // --- Sync Scroll Logic ---
   useEffect(() => {
-    // Set initial width for top scroll spacer
     if (tableContainerRef.current) {
         setTableScrollWidth(tableContainerRef.current.scrollWidth);
     }
@@ -92,7 +91,6 @@ export const Trades: React.FC = () => {
         tableScroll.addEventListener('scroll', handleTableScroll);
     }
 
-    // Observer to update width if table content changes
     const observer = new ResizeObserver(() => {
         if (tableContainerRef.current) {
             setTableScrollWidth(tableContainerRef.current.scrollWidth);
@@ -111,18 +109,19 @@ export const Trades: React.FC = () => {
   // --- Stats Calculation ---
   const stats = useMemo(() => {
     const closedTrades = filteredTrades.filter(t => t.exitPrice !== undefined);
-    const totalPnL = closedTrades.reduce((acc, t) => acc + calculatePnL(t), 0);
-    const profitFactor = calculateProfitFactor(closedTrades);
-    const { avgWin, avgLoss } = calculateAvgWinLoss(closedTrades);
-    const { grossProfit, grossLoss } = calculateGrossStats(closedTrades);
+    const totalPnL = closedTrades.reduce((acc, t) => acc + calculatePnL(t, userSettings.commissionPerUnit), 0);
+    const profitFactor = calculateProfitFactor(closedTrades, userSettings.commissionPerUnit);
+    const { avgWin, avgLoss } = calculateAvgWinLoss(closedTrades, userSettings.commissionPerUnit);
+    const { grossProfit, grossLoss } = calculateGrossStats(closedTrades, userSettings.commissionPerUnit);
     const { 
         currentDayStreak, maxDayWinStreak, maxDayLossStreak,
         currentTradeStreak, maxTradeWinStreak, maxTradeLossStreak 
-    } = calculateStreaks(closedTrades);
+    } = calculateStreaks(closedTrades, userSettings.commissionPerUnit);
 
-    const winsCount = closedTrades.filter(t => calculatePnL(t) > 0).length;
-    const lossesCount = closedTrades.filter(t => calculatePnL(t) < 0).length;
-    const breakEvenCount = closedTrades.filter(t => calculatePnL(t) === 0).length;
+    // Updated Logic: Count based on Status
+    const winsCount = closedTrades.filter(t => t.status === TradeStatus.WIN || t.status === TradeStatus.SMALL_WIN).length;
+    const lossesCount = closedTrades.filter(t => t.status === TradeStatus.LOSS || t.status === TradeStatus.SMALL_LOSS).length;
+    const breakEvenCount = closedTrades.filter(t => t.status === TradeStatus.BREAK_EVEN).length;
     
     const totalMeaningfulTrades = winsCount + lossesCount;
     const adjustedWinRate = totalMeaningfulTrades > 0 ? Math.round((winsCount / totalMeaningfulTrades) * 100) : 0;
@@ -135,7 +134,7 @@ export const Trades: React.FC = () => {
         currentDayStreak, maxDayWinStreak, maxDayLossStreak,
         currentTradeStreak, maxTradeWinStreak, maxTradeLossStreak 
     };
-  }, [filteredTrades]);
+  }, [filteredTrades, userSettings.commissionPerUnit]);
 
   // --- Selection Logic ---
   const handleSelectAll = () => {
@@ -154,23 +153,16 @@ export const Trades: React.FC = () => {
   };
 
   const handleBulkDelete = async () => {
-      // Create a copy of IDs to delete to avoid state issues during iteration
       const idsToDelete = Array.from(selectedIds);
-      
-      // Perform deletions
       for (const id of idsToDelete) {
           await deleteTrade(id);
       }
-      
-      // Reset state
       setSelectedIds(new Set());
       setIsDeleteConfirmOpen(false);
   };
 
   const handleRowClick = (e: React.MouseEvent, trade: Trade) => {
-      // Prevent editing if clicking on checkbox or links
       if ((e.target as HTMLElement).closest('.no-row-click')) return;
-      
       setEditingTrade(trade);
       setIsEditModalOpen(true);
   };
@@ -184,85 +176,15 @@ export const Trades: React.FC = () => {
   // --- Sorting Logic ---
   const handleSort = (colId: string) => {
     let direction: SortDirection = 'desc';
-    
-    // Cycle: null -> desc -> asc -> null (default)
     if (sortConfig.key === colId) {
         if (sortConfig.direction === 'desc') direction = 'asc';
         else if (sortConfig.direction === 'asc') direction = null;
     }
-
     setSortConfig({ key: direction ? colId : null, direction });
   };
 
-  // Custom sort weight for Status
-  const getStatusWeight = (s: string) => {
-      switch(s) {
-          case TradeStatus.WIN: return 5;
-          case TradeStatus.SMALL_WIN: return 4;
-          case TradeStatus.BREAK_EVEN: return 3;
-          case TradeStatus.SMALL_LOSS: return 2;
-          case TradeStatus.LOSS: return 1;
-          default: return 0;
-      }
-  };
-
-  // Local calculation helper for multiplier
-  const getMultiplier = (symbol: string) => {
-      const s = symbol.toUpperCase();
-      if (s.includes('MES')) return 5;
-      if (s.includes('MNQ')) return 2;
-      if (s === 'ES') return 50;
-      if (s === 'NQ') return 20;
-      return 1;
-  };
-
-  // Helper to calculate derived metrics per trade
-  const getTradeMetrics = (trade: Trade) => {
-      const mult = getMultiplier(trade.symbol);
-      const qty = trade.quantity;
-      const entry = trade.entryPrice;
-      
-      // 1. Initial Risk Amount
-      let initialRiskAmt = 0;
-      if (trade.initialStopLoss) {
-          initialRiskAmt = Math.abs(entry - trade.initialStopLoss) * qty * mult;
-      }
-
-      // 2. Actual Risk Amount
-      let actualRiskAmt = 0;
-      if (trade.direction === 'Long') {
-          // If lowestPriceReached is missing, assume entry price (no draw down) or handle logic
-          const low = trade.lowestPriceReached ?? entry; 
-          actualRiskAmt = (entry - low) * qty * mult;
-      } else {
-          const high = trade.highestPriceReached ?? entry;
-          actualRiskAmt = (high - entry) * qty * mult;
-      }
-      
-      if (actualRiskAmt < 0) actualRiskAmt = 0;
-
-      // 3. Best P&L
-      let bestPnL = 0;
-      if (trade.direction === 'Long') {
-          const exit = trade.bestExitPrice ?? trade.highestPriceReached ?? entry;
-          bestPnL = (exit - entry) * qty * mult;
-      } else {
-          const exit = trade.bestExitPrice ?? trade.lowestPriceReached ?? entry;
-          bestPnL = (entry - exit) * qty * mult;
-      }
-
-      return {
-          initialRiskAmt,
-          actualRiskAmt,
-          bestPnL,
-          actualRiskPct: initialRiskAmt > 0 ? (actualRiskAmt / initialRiskAmt) * 100 : 0,
-          bestRR: initialRiskAmt > 0 ? bestPnL / initialRiskAmt : 0
-      };
-  };
-
   const getSortableValue = (trade: Trade, colId: string): number | string => {
-      const metrics = getTradeMetrics(trade);
-
+      const metrics = getTradeMetrics(trade, userSettings.commissionPerUnit);
       switch(colId) {
           case 'openDate': return new Date(trade.entryDate).getTime();
           case 'openTime': return new Date(trade.entryDate).getTime();
@@ -276,72 +198,80 @@ export const Trades: React.FC = () => {
           case 'exitPrice': return trade.exitPrice || 0;
           case 'bestExitPrice': return trade.bestExitPrice || 0;
           case 'initialStopLoss': return trade.initialStopLoss || 0;
-          case 'netPnL': return calculatePnL(trade);
-          case 'rMultiple': return calculateRMultiple(trade) || -999;
+          case 'netPnL': return calculatePnL(trade, userSettings.commissionPerUnit);
+          case 'rMultiple': return calculateRMultiple(trade, userSettings.commissionPerUnit) || -999;
           case 'strategy': return strategies.find(p => p.id === trade.playbookId)?.name || '';
           case 'duration': 
               if (!trade.exitDate) return 0;
               return new Date(trade.exitDate).getTime() - new Date(trade.entryDate).getTime();
-          
-          // New Columns
           case 'bestPnL': return metrics.bestPnL;
           case 'bestRR': return metrics.bestRR;
           case 'actualRisk': return metrics.actualRiskAmt;
           case 'actualRiskPct': return metrics.actualRiskPct;
-          
           default: return 0;
       }
   };
 
   const sortedTrades = useMemo(() => {
     let sortableItems = [...filteredTrades];
-    
     if (sortConfig.key && sortConfig.direction) {
         sortableItems.sort((a, b) => {
             const valA = getSortableValue(a, sortConfig.key!);
             const valB = getSortableValue(b, sortConfig.key!);
-
-            if (valA < valB) {
-                return sortConfig.direction === 'asc' ? -1 : 1;
-            }
-            if (valA > valB) {
-                return sortConfig.direction === 'asc' ? 1 : -1;
-            }
+            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
     } else {
-        // Default: Sort by entry date descending
         sortableItems.sort((a, b) => new Date(b.entryDate).getTime() - new Date(a.entryDate).getTime());
     }
-    
     return sortableItems;
-  }, [filteredTrades, sortConfig, strategies]);
+  }, [filteredTrades, sortConfig, strategies, userSettings.commissionPerUnit]);
 
-  // Helper to render cell content based on column ID
+  // --- Render Cell (Updated to be BOLD) ---
   const renderCell = (trade: Trade, colId: string) => {
-      const pnl = calculatePnL(trade);
-      const entryDt = new Date(trade.entryDate);
-      const exitDt = trade.exitDate ? new Date(trade.exitDate) : null;
-      const metrics = getTradeMetrics(trade);
+      const pnl = calculatePnL(trade, userSettings.commissionPerUnit);
+      // const entryDt = new Date(trade.entryDate); // Deprecated use of Date object for rendering
+      // const exitDt = trade.exitDate ? new Date(trade.exitDate) : null;
+      const metrics = getTradeMetrics(trade, userSettings.commissionPerUnit);
 
-      // Timezone Helper: America/New_York (EST/EDT)
-      const formatTime = (date: Date) => date.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false });
-      const formatDate = (date: Date) => date.toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+      // Raw String Parsing Helpers
+      const getRawDate = (iso: string) => iso ? iso.split('T')[0] : '-';
+      const getRawTime = (iso: string) => {
+          if (!iso) return '-';
+          const t = iso.split('T')[1];
+          return t ? t.substring(0, 5) : '-'; // HH:MM
+      };
+
+      // Duration calc still needs Date objects for math, which is fine for relative difference
+      const getDuration = () => {
+          if (!trade.exitDate) return '-';
+          const start = new Date(trade.entryDate);
+          const end = new Date(trade.exitDate);
+          const diffMs = end.getTime() - start.getTime();
+          if (diffMs > 0) {
+              const diffMins = Math.floor(diffMs / 60000);
+              const hours = Math.floor(diffMins / 60);
+              const mins = diffMins % 60;
+              return `${hours}h ${mins}m`;
+          }
+          return '-';
+      };
 
       switch(colId) {
-          case 'openDate': return formatDate(entryDt);
-          case 'openTime': return formatTime(entryDt);
-          case 'closeDate': return exitDt ? formatDate(exitDt) : '-';
-          case 'closeTime': return exitDt ? formatTime(exitDt) : '-';
+          case 'openDate': return <span className="text-lg font-bold">{getRawDate(trade.entryDate)}</span>;
+          case 'openTime': return <span className="text-lg font-bold">{getRawTime(trade.entryDate)}</span>;
+          case 'closeDate': return <span className="text-lg font-bold">{getRawDate(trade.exitDate || '')}</span>;
+          case 'closeTime': return <span className="text-lg font-bold">{getRawTime(trade.exitDate || '')}</span>;
           case 'symbol': 
             return (
                 <div className="flex items-center gap-2">
-                    <span className="font-bold text-white">{trade.symbol}</span>
-                    {trade.screenshotUrl && <ImageIcon size={14} className="text-slate-500" />}
+                    <span className="font-bold text-white text-lg">{trade.symbol}</span>
+                    {trade.screenshotUrl && <ImageIcon size={20} className="text-slate-500" />}
                 </div>
             );
           case 'side': return (
-            <span className={`px-2 py-1 rounded text-xs font-semibold ${trade.direction === 'Long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+            <span className={`px-3 py-1.5 rounded text-base font-bold ${trade.direction === 'Long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                 {trade.direction === 'Long' ? 'Long' : 'Short'}
             </span>
           );
@@ -354,122 +284,109 @@ export const Trades: React.FC = () => {
             else if (trade.status === TradeStatus.LOSS) statusClass = "bg-red-600 text-white";
 
             return (
-                <span className={`px-2 py-1 rounded text-xs font-semibold ${statusClass}`}>
-                    {trade.status}
-                </span>
+                <div className="flex justify-center">
+                    <span className={`px-3 py-1.5 rounded text-base font-bold ${statusClass}`}>
+                        {trade.status}
+                    </span>
+                </div>
             );
-          case 'quantity': return trade.quantity;
-          case 'entryPrice': return <span className="text-slate-300">{trade.entryPrice}</span>;
-          case 'exitPrice': return <span className="text-slate-300">{trade.exitPrice || '-'}</span>;
+          case 'quantity': return <span className="text-lg font-bold">{trade.quantity}</span>;
+          case 'entryPrice': return <span className="text-slate-300 text-lg font-bold">{trade.entryPrice}</span>;
+          case 'exitPrice': return <span className="text-slate-300 text-lg font-bold">{trade.exitPrice || '-'}</span>;
           case 'bestExitPrice': 
                 const bestExit = trade.bestExitPrice ?? (trade.direction === 'Long' ? trade.highestPriceReached : trade.lowestPriceReached);
-                return <span className="text-slate-400 text-xs">{bestExit || '-'}</span>;
-          case 'initialStopLoss': return <span className="text-amber-500/80">{trade.initialStopLoss || '-'}</span>;
-          case 'netPnL': return <span className={`font-bold text-base ${pnl > 0 ? 'text-green-400' : pnl < 0 ? 'text-red-400' : 'text-slate-400'}`}>{formatCurrency(pnl)}</span>;
+                return <span className="text-slate-400 text-lg font-bold">{bestExit || '-'}</span>;
+          case 'initialStopLoss': return <span className="text-amber-500/80 text-lg font-bold">{trade.initialStopLoss || '-'}</span>;
+          case 'netPnL': return <span className={`font-bold text-lg ${pnl > 0 ? 'text-green-400' : pnl < 0 ? 'text-red-400' : 'text-slate-400'}`}>{formatCurrency(pnl)}</span>;
           case 'rMultiple': 
-              const r = calculateRMultiple(trade);
-              return r !== undefined ? `${r}R` : '-';
+              const r = calculateRMultiple(trade, userSettings.commissionPerUnit);
+              return <span className="text-slate-300 text-lg font-bold">{r !== undefined ? `${r}R` : '-'}</span>;
           case 'strategy': 
               const stName = strategies.find(p => p.id === trade.playbookId)?.name;
-              return stName || '-';
-          case 'duration': 
-              if (exitDt) {
-                  const diffMs = exitDt.getTime() - entryDt.getTime();
-                  if (diffMs > 0) {
-                      const diffMins = Math.floor(diffMs / 60000);
-                      const hours = Math.floor(diffMins / 60);
-                      const mins = diffMins % 60;
-                      return <span className="text-slate-400">{hours}h {mins}m</span>;
-                  }
-              }
-              return '-';
+              return <span className="text-lg font-bold">{stName || '-'}</span>;
+          case 'duration': return <span className="text-slate-400 text-lg font-bold">{getDuration()}</span>;
           
-          // New Columns Renders
           case 'bestPnL':
-              return <span className={metrics.bestPnL > 0 ? 'text-green-400' : ''}>{formatCurrency(metrics.bestPnL)}</span>;
+              return <span className={`text-lg font-bold ${metrics.bestPnL > 0 ? 'text-green-400' : ''}`}>{formatCurrency(metrics.bestPnL)}</span>;
           case 'bestRR':
-              return <span className="text-slate-300">{metrics.bestRR.toFixed(2)}R</span>;
+              return <span className="text-slate-300 text-lg font-bold">{metrics.bestRR.toFixed(2)}R</span>;
           case 'actualRisk':
-              return <span className="text-red-400">-{formatCurrency(metrics.actualRiskAmt)}</span>;
+              return <span className="text-red-400 text-lg font-bold">-{formatCurrency(metrics.actualRiskAmt)}</span>;
           case 'actualRiskPct':
-              return <span className="text-slate-300">{metrics.actualRiskPct.toFixed(1)}%</span>;
+              return <span className="text-slate-300 text-lg font-bold">{metrics.actualRiskPct.toFixed(1)}%</span>;
 
-          default: return '-';
+          default: return <span className="text-lg font-bold">-</span>;
       }
   };
 
   return (
     <div className="space-y-6">
       
-      {/* 1. Top Stats (Reused from Dashboard) */}
+      {/* 1. Top Stats */}
       <TopWidgets stats={stats} />
 
       <div className="flex justify-between items-center mt-8">
-         <h2 className="text-2xl font-bold text-white">交易資料庫 (Trades Database)</h2>
+         <h2 className="text-3xl font-bold text-white">交易資料庫 (Trades Database)</h2>
          <div className="flex gap-2">
             {/* Settings Button */}
             <button 
                 onClick={() => setIsColumnModalOpen(true)}
-                className="p-2 bg-surface hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors"
+                className="p-3 bg-surface hover:bg-slate-700 border border-slate-600 rounded-lg text-slate-400 hover:text-white transition-colors"
                 title="欄位設定"
             >
-                <Settings size={20} />
+                <Settings size={24} />
             </button>
 
-            {/* Trash Button - Activated on Selection */}
+            {/* Trash Button */}
             <button 
                 onClick={() => selectedIds.size > 0 && setIsDeleteConfirmOpen(true)}
-                className={`p-2 border border-slate-700 rounded-lg transition-all ${selectedIds.size > 0 ? 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white border-red-500/30' : 'bg-surface text-slate-600 opacity-50 cursor-not-allowed'}`}
-                title={selectedIds.size > 0 ? `Delete ${selectedIds.size} trades` : "Select trades to delete"}
+                className={`p-3 border border-slate-600 rounded-lg transition-all ${selectedIds.size > 0 ? 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white border-red-500/30' : 'bg-surface text-slate-600 opacity-50 cursor-not-allowed'}`}
                 disabled={selectedIds.size === 0}
             >
-                <Trash2 size={20} />
+                <Trash2 size={24} />
             </button>
          </div>
       </div>
 
-      {/* Main Table Container with Top Scroll */}
-      <div className="bg-surface rounded-xl border border-slate-700 overflow-hidden shadow-sm">
-         {/* Top Scrollbar */}
+      {/* Main Table Container */}
+      <div className="bg-surface rounded-xl border border-slate-600 overflow-hidden shadow-sm">
          <div 
             ref={topScrollRef} 
-            className="overflow-x-auto w-full border-b border-slate-700/30"
-            style={{ height: '12px' }} // Small visible height for scrollbar
+            className="overflow-x-auto w-full border-b border-slate-600/30"
+            style={{ height: '12px' }}
          >
              <div style={{ width: tableScrollWidth, height: '1px' }}></div>
          </div>
 
-         {/* Actual Table */}
          <div 
             ref={tableContainerRef}
             className="overflow-x-auto min-h-[400px]"
          >
-             <table className="w-full text-left text-sm text-slate-400">
-                <thead className="bg-slate-900/50 uppercase text-xs font-semibold tracking-wider text-slate-300">
+             <table className="w-full text-left text-lg text-slate-400 font-bold">
+                {/* Header Font updated: No uppercase, text-lg */}
+                <thead className="bg-slate-800/50 text-lg font-bold tracking-wider text-slate-300">
                     <tr>
-                        {/* Select All Checkbox */}
-                        <th className="px-4 py-4 w-12 text-center border-b border-slate-700/50">
+                        <th className="px-6 py-5 w-16 text-center border-b border-slate-600">
                             <button 
                                 onClick={handleSelectAll}
-                                className={`flex items-center justify-center transition-colors ${selectedIds.size > 0 ? 'text-primary' : 'text-slate-600 hover:text-slate-400'}`}
+                                className={`flex items-center justify-center transition-colors ${selectedIds.size > 0 ? 'text-primary' : 'text-slate-500 hover:text-slate-400'}`}
                             >
-                                {selectedIds.size > 0 && selectedIds.size === sortedTrades.length ? <CheckSquare size={16} /> : <Square size={16} />}
+                                {selectedIds.size > 0 && selectedIds.size === sortedTrades.length ? <CheckSquare size={20} /> : <Square size={20} />}
                             </button>
                         </th>
                         
                         {visibleColumns.map(colId => {
                             const isSorted = sortConfig.key === colId;
                             return (
-                                <th key={colId} className="px-6 py-4 whitespace-nowrap border-b border-slate-700/50">
-                                    <div className="flex items-center gap-1 group cursor-pointer" onClick={() => handleSort(colId)}>
+                                <th key={colId} className={`px-6 py-5 whitespace-nowrap border-b border-slate-600 ${colId === 'status' ? 'text-center' : ''}`}>
+                                    <div className={`flex items-center gap-1 group cursor-pointer ${colId === 'status' ? 'justify-center' : ''}`} onClick={() => handleSort(colId)}>
                                         {ALL_COLUMNS.find(c => c.id === colId)?.label}
                                         <div 
-                                            className={`p-0.5 rounded transition-colors ${isSorted ? 'text-primary bg-primary/10' : 'text-slate-600 opacity-0 group-hover:opacity-100 hover:text-slate-400 hover:bg-slate-700'}`}
-                                            title="排序"
+                                            className={`p-0.5 rounded transition-colors ${isSorted ? 'text-primary bg-primary/10' : 'text-slate-600 opacity-0 group-hover:opacity-100 hover:text-slate-400 hover:bg-slate-600'}`}
                                         >
-                                            {isSorted && sortConfig.direction === 'asc' && <ArrowUp size={14} />}
-                                            {isSorted && sortConfig.direction === 'desc' && <ArrowDown size={14} />}
-                                            {!isSorted && <ArrowUpDown size={14} />}
+                                            {isSorted && sortConfig.direction === 'asc' && <ArrowUp size={16} />}
+                                            {isSorted && sortConfig.direction === 'desc' && <ArrowDown size={16} />}
+                                            {!isSorted && <ArrowUpDown size={16} />}
                                         </div>
                                     </div>
                                 </th>
@@ -477,7 +394,7 @@ export const Trades: React.FC = () => {
                         })}
                     </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-700">
+                <tbody className="divide-y divide-slate-600">
                     {sortedTrades.map((trade) => {
                         const rowKey = trade.id || `temp-${Math.random()}`; 
                         const isSelected = selectedIds.has(trade.id);
@@ -485,20 +402,19 @@ export const Trades: React.FC = () => {
                             <tr 
                                 key={rowKey} 
                                 onClick={(e) => handleRowClick(e, trade)}
-                                className={`transition-colors group cursor-pointer ${isSelected ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-slate-700/30'}`}
+                                className={`transition-colors group cursor-pointer ${isSelected ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-slate-600/30'}`}
                             >
-                                {/* Row Checkbox */}
-                                <td className="px-4 py-4 w-12 text-center no-row-click" onClick={(e) => e.stopPropagation()}>
+                                <td className="px-6 py-5 w-16 text-center no-row-click" onClick={(e) => e.stopPropagation()}>
                                     <button 
                                         onClick={() => toggleSelectRow(trade.id)}
                                         className={`flex items-center justify-center transition-colors ${isSelected ? 'text-primary' : 'text-slate-600 hover:text-slate-400'}`}
                                     >
-                                        {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                                        {isSelected ? <CheckSquare size={20} /> : <Square size={20} />}
                                     </button>
                                 </td>
 
                                 {visibleColumns.map(colId => (
-                                    <td key={colId} className="px-6 py-4 whitespace-nowrap">
+                                    <td key={colId} className={`px-6 py-5 whitespace-nowrap ${colId === 'status' ? 'text-center' : ''}`}>
                                         {renderCell(trade, colId)}
                                     </td>
                                 ))}
@@ -507,7 +423,7 @@ export const Trades: React.FC = () => {
                     })}
                     {sortedTrades.length === 0 && (
                         <tr>
-                            <td colSpan={visibleColumns.length + 1} className="px-6 py-12 text-center text-slate-500">
+                            <td colSpan={visibleColumns.length + 1} className="px-6 py-12 text-center text-slate-500 text-lg">
                                 No trades found.
                             </td>
                         </tr>
@@ -517,52 +433,58 @@ export const Trades: React.FC = () => {
          </div>
       </div>
 
-      {/* Column Selection Modal - Using Portal */}
+      {/* Column Selection Modal - ENLARGED & REDESIGNED */}
       {isColumnModalOpen && createPortal(
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-             <div className="bg-surface w-[600px] max-h-[80vh] rounded-xl border border-slate-700 shadow-2xl flex flex-col">
-                <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-[#1f2937] rounded-t-xl">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+             <div className="bg-surface w-full max-w-5xl h-auto max-h-[95%] rounded-2xl border border-slate-600 shadow-2xl flex flex-col">
+                <div className="p-6 border-b border-slate-600 flex justify-between items-center bg-surface rounded-t-2xl">
                     <div>
-                        <h3 className="text-lg font-bold text-white">Select Columns</h3>
-                        <p className="text-xs text-slate-400">Choose the columns you want to display in the table.</p>
+                        <h3 className="text-3xl font-bold text-white">Select Columns</h3>
+                        <p className="text-lg text-slate-400 mt-1">Choose the columns you want to display in the table.</p>
                     </div>
-                    <button onClick={() => setIsColumnModalOpen(false)} className="text-slate-400 hover:text-white"><X size={20}/></button>
+                    <button onClick={() => setIsColumnModalOpen(false)} className="text-slate-400 hover:text-white bg-slate-800 p-2 rounded-lg hover:bg-slate-700 transition-colors"><X size={32}/></button>
                 </div>
                 
-                <div className="p-4 border-b border-slate-700 flex gap-2 bg-[#1f2937]">
-                    <button onClick={() => setVisibleColumns(ALL_COLUMNS.map(c => c.id))} className="px-3 py-1 rounded-full border border-slate-600 text-xs text-white hover:bg-slate-700">All</button>
-                    <button onClick={() => setVisibleColumns([])} className="px-3 py-1 rounded-full border border-slate-600 text-xs text-white hover:bg-slate-700">None</button>
-                    <button onClick={() => setVisibleColumns(DEFAULT_COLUMNS)} className="px-3 py-1 rounded-full bg-slate-700 text-xs text-white hover:bg-slate-600">Default</button>
-                </div>
+                {/* No top bar buttons, moved to footer */}
 
-                <div className="p-6 overflow-y-auto bg-[#1f2937]">
-                    {/* Use columns-3 for top-to-bottom filling in 3 columns */}
-                    <div className="columns-3 gap-8 space-y-4">
+                <div className="p-10 overflow-y-auto bg-surface flex-1">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-4">
                         {ALL_COLUMNS.map(col => (
-                            <label key={col.id} className="flex items-center gap-2 cursor-pointer group break-inside-avoid">
-                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors flex-shrink-0 ${visibleColumns.includes(col.id) ? 'bg-primary border-primary' : 'border-slate-500 group-hover:border-slate-300'}`}>
-                                    {visibleColumns.includes(col.id) && <div className="w-2 h-2 bg-white rounded-sm" />}
+                            <button 
+                                key={col.id} 
+                                onClick={() => toggleColumn(col.id)}
+                                className="w-full text-left flex items-center gap-3 p-3 rounded-lg hover:bg-slate-800 transition-colors group"
+                            >
+                                <div className={`transition-colors flex-shrink-0 ${visibleColumns.includes(col.id) ? 'text-primary' : 'text-slate-600 group-hover:text-slate-500'}`}>
+                                    {visibleColumns.includes(col.id) ? <CheckSquare size={24} /> : <Square size={24} />}
                                 </div>
-                                <span className={`text-sm ${visibleColumns.includes(col.id) ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>{col.label}</span>
-                                <input type="checkbox" className="hidden" checked={visibleColumns.includes(col.id)} onChange={() => toggleColumn(col.id)} />
-                            </label>
+                                <span className={`text-xl font-bold ${visibleColumns.includes(col.id) ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`}>
+                                    {col.label}
+                                </span>
+                            </button>
                         ))}
                     </div>
                 </div>
 
-                <div className="p-4 border-t border-slate-700 flex justify-end gap-2 bg-slate-800/50 rounded-b-xl">
-                    <button onClick={() => setIsColumnModalOpen(false)} className="px-4 py-2 text-sm text-slate-300 hover:text-white">Go back</button>
-                    <button onClick={() => setIsColumnModalOpen(false)} className="px-4 py-2 bg-primary hover:bg-indigo-600 text-white rounded-lg text-sm font-medium shadow-lg shadow-indigo-500/20">Update Table</button>
+                <div className="p-6 border-t border-slate-600 flex justify-between items-center bg-slate-800/20 rounded-b-2xl">
+                    <div className="flex gap-3">
+                        <button onClick={() => setVisibleColumns(ALL_COLUMNS.map(c => c.id))} className="px-5 py-3 rounded-xl border border-slate-500 text-lg font-bold text-white hover:bg-slate-700 transition-colors">All</button>
+                        <button onClick={() => setVisibleColumns([])} className="px-5 py-3 rounded-xl border border-slate-500 text-lg font-bold text-white hover:bg-slate-700 transition-colors">None</button>
+                        <button onClick={() => setVisibleColumns(DEFAULT_COLUMNS)} className="px-5 py-3 rounded-xl bg-slate-600 text-lg font-bold text-white hover:bg-slate-500 transition-colors">Default</button>
+                    </div>
+                    <div className="flex gap-4">
+                        <button onClick={() => setIsColumnModalOpen(false)} className="px-8 py-3 text-lg text-slate-300 hover:text-white font-bold hover:bg-slate-700/50 rounded-xl transition-colors">Go back</button>
+                        <button onClick={() => setIsColumnModalOpen(false)} className="px-8 py-3 bg-primary hover:bg-primary-dark text-white rounded-xl text-lg font-bold shadow-xl shadow-primary/20 transition-all">Update Table</button>
+                    </div>
                 </div>
              </div>
           </div>,
           document.body
       )}
 
-      {/* Delete Confirmation Modal - Using Portal */}
       {isDeleteConfirmOpen && createPortal(
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-             <div className="bg-[#1f2937] border border-slate-700 p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center transform scale-100 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+             <div className="bg-surface border border-slate-600 p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center transform scale-100 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
                 <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500 ring-4 ring-red-500/5">
                     <Trash2 size={32} />
                 </div>
@@ -574,7 +496,7 @@ export const Trades: React.FC = () => {
                 <div className="flex gap-4 justify-center">
                     <button 
                         onClick={() => setIsDeleteConfirmOpen(false)} 
-                        className="px-6 py-2.5 text-sm font-semibold text-slate-300 hover:text-white border border-slate-600 rounded-lg hover:bg-slate-700 transition-all flex-1"
+                        className="px-6 py-2.5 text-sm font-semibold text-slate-300 hover:text-white border border-slate-500 rounded-lg hover:bg-slate-600 transition-all flex-1"
                     >
                         Cancel
                     </button>
@@ -590,7 +512,6 @@ export const Trades: React.FC = () => {
           document.body
       )}
 
-      {/* New Trade Info Modal (Replacing the Edit Modal for clicking existing trades) */}
       {editingTrade && (
           <TradeInfoModal 
             isOpen={isEditModalOpen}
@@ -599,6 +520,7 @@ export const Trades: React.FC = () => {
                 setEditingTrade(undefined);
             }}
             trade={editingTrade}
+            mode="edit"
           />
       )}
     </div>
