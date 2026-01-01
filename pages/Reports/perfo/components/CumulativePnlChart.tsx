@@ -17,17 +17,17 @@ type ChartType = 'line' | 'bar';
 type MetricType = 'cum_pnl' | 'per_pnl' | 'cum_pnl_avg' | 'cum_max_dd' | 'per_dd' | 'cum_dd_avg' | 'per_rr' | 'cum_rr_sum' | 'cum_avg_rr' | 'cum_daily_rr_avg' | 'cum_pl_ratio';
 
 const METRICS: { id: MetricType; label: string; desc: string }[] = [
-    { id: 'cum_pnl', label: '總淨損益-累計', desc: '累積的淨損益總額。' },
-    { id: 'per_pnl', label: '單日淨損益', desc: '該週期（日/月）內的淨損益。' },
-    { id: 'cum_pnl_avg', label: '平均每日淨損益-累積', desc: '截至當日的「總淨損益 / 交易天數」之平均值。' },
-    { id: 'cum_max_dd', label: '最大回撤-累計', desc: '截至當日，資金曲線從最高點回落的最大金額。' },
-    { id: 'per_dd', label: '單日回撤', desc: '該週期（日/月）內資金曲線從最高點跌至最低點的金額。' },
-    { id: 'cum_dd_avg', label: '平均每日回撤-累積', desc: '截至當日的「單日回撤總和 / 交易天數」之平均值。' },
-    { id: 'per_rr', label: '單日實現 RR', desc: '該週期（日/月）內所有交易 RR 的總和。' },
-    { id: 'cum_rr_sum', label: '單日實現 RR-累積', desc: '截至當日的所有交易 RR 總和的累加值。' },
-    { id: 'cum_avg_rr', label: '平均實現 RR-累積', desc: '截至當日的所有交易 RR 總和 / 總交易筆數。' },
-    { id: 'cum_daily_rr_avg', label: '平均每日 RR-累積', desc: '顯示獲利日相對於虧損日的獲利能力。計算方式：Abs(平均獲利日金額 / 平均虧損日金額)。' },
-    { id: 'cum_pl_ratio', label: '平均盈虧 RR-累積', desc: '截至當日的「平均獲利金額 / 平均虧損金額」比率。' },
+    { id: 'cum_pnl', label: '總淨損益-累計', desc: '累積的淨損益總額' },
+    { id: 'per_pnl', label: '單日淨損益', desc: '該週期（日/月）內的淨損益' },
+    { id: 'cum_pnl_avg', label: '平均每日淨損益-累積', desc: '截至當日的「總淨損益 / 交易天數」之平均值' },
+    { id: 'cum_max_dd', label: '最大回撤-累計', desc: '截至當日，資金曲線從最高點回落的最大金額' },
+    { id: 'per_dd', label: '單日回撤', desc: '該週期（日/月）內資金曲線從最高點跌至最低點的金額' },
+    { id: 'cum_dd_avg', label: '平均每日回撤-累積', desc: '截至當日的「單日回撤總和 / 交易天數」之平均值' },
+    { id: 'per_rr', label: '單日實現 RR', desc: '該週期（日/月）內所有交易 RR 的總和' },
+    { id: 'cum_rr_sum', label: '單日實現 RR-累積', desc: '截至當日的所有交易 RR 總和的累加值' },
+    { id: 'cum_avg_rr', label: '平均實現 RR-累積', desc: '截至當日的所有交易 RR 總和 / 總交易筆數' },
+    { id: 'cum_daily_rr_avg', label: '平均每日 RR-累積', desc: '顯示獲利日相對於虧損日的獲利能力。計算方式：Abs(平均獲利日金額 / 平均虧損日金額)' },
+    { id: 'cum_pl_ratio', label: '平均盈虧 RR-累積', desc: '截至當日的「平均獲利金額 / 平均虧損金額」比率' },
 ];
 
 export const CumulativePnlChart: React.FC<CumulativePnlChartProps> = ({ trades, commission }) => {
@@ -39,9 +39,10 @@ export const CumulativePnlChart: React.FC<CumulativePnlChartProps> = ({ trades, 
     
     // Ref for click outside logic
     const dropdownRef = useRef<HTMLDivElement>(null);
-    // Ref for custom scroll behavior on the list
     const listRef = useRef<HTMLDivElement>(null);
+    const infoRef = useRef<HTMLDivElement>(null);
 
+    // Dropdown Click Outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -56,6 +57,21 @@ export const CumulativePnlChart: React.FC<CumulativePnlChartProps> = ({ trades, 
         };
     }, [isDropdownOpen]);
 
+    // Info Tooltip Click Outside
+    useEffect(() => {
+        const handleClickOutsideInfo = (event: MouseEvent) => {
+            if (infoRef.current && !infoRef.current.contains(event.target as Node)) {
+                setShowInfo(false);
+            }
+        };
+        if (showInfo) {
+            document.addEventListener('mousedown', handleClickOutsideInfo);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutsideInfo);
+        };
+    }, [showInfo]);
+
     // Custom Scroll Logic to control scroll amount (Task 2)
     useEffect(() => {
         const listEl = listRef.current;
@@ -64,15 +80,11 @@ export const CumulativePnlChart: React.FC<CumulativePnlChartProps> = ({ trades, 
         const handleWheel = (e: WheelEvent) => {
             e.preventDefault();
             e.stopPropagation();
-            // Custom step size: 60px (Slower than default browser scroll)
-            // This allows for ~3 scrolls to reach bottom of a 130px container with these items
             const step = 60; 
             listEl.scrollTop += (e.deltaY > 0 ? step : -step);
         };
 
-        // Passive: false is required to use preventDefault()
         listEl.addEventListener('wheel', handleWheel, { passive: false });
-        
         return () => {
             listEl.removeEventListener('wheel', handleWheel);
         };
@@ -92,23 +104,20 @@ export const CumulativePnlChart: React.FC<CumulativePnlChartProps> = ({ trades, 
 
         const sortedKeys = Array.from(groups.keys()).sort();
         
-        // Running Totals for Cumulative Calculations
         let cumPnl = 0;
-        let cumR = 0; // Sum of all individual trade Rs
-        let cumDailyRRSum = 0; // Cumulative sum of daily RR sums (for cum_rr_sum)
-        let cumDD = 0; // Sum of daily drawdowns
+        let cumR = 0; 
+        let cumDailyRRSum = 0; 
+        let cumDD = 0; 
         let peakEquity = 0; 
         
         let totalTradesCount = 0;
         let totalDaysCount = 0;
 
-        // For Avg P/L Ratio (Trade Profit Factor)
         let sumWins = 0;
         let countWins = 0;
         let sumLosses = 0;
         let countLosses = 0;
 
-        // For Avg Daily RR (Win Day Avg / Loss Day Avg)
         let winDaySum = 0;
         let winDayCount = 0;
         let lossDaySum = 0;
@@ -118,10 +127,8 @@ export const CumulativePnlChart: React.FC<CumulativePnlChartProps> = ({ trades, 
             const periodTrades = groups.get(key) || [];
             totalDaysCount++;
             
-            // Period Stats
             const periodPnl = periodTrades.reduce((acc, t) => acc + calculatePnL(t, commission), 0);
             
-            // Update Win/Loss Day Stats for cum_daily_rr_avg
             if (periodPnl > 0) {
                 winDaySum += periodPnl;
                 winDayCount++;
@@ -132,15 +139,11 @@ export const CumulativePnlChart: React.FC<CumulativePnlChartProps> = ({ trades, 
 
             const periodR = periodTrades.reduce((acc, t) => acc + (calculateRMultiple(t, commission) || 0), 0);
             const periodTradesCount = periodTrades.length;
-            
-            // Period RR (Sum for this day)
             const periodRRSum = periodR;
 
             const periodWins = periodTrades.filter(t => calculatePnL(t, commission) > 0);
             const periodLosses = periodTrades.filter(t => calculatePnL(t, commission) < 0);
             
-            // Period Drawdown (Peak to Trough within the period)
-            // Sort trades by time within the day
             const sortedPeriodTrades = [...periodTrades].sort((a, b) => new Date(a.exitDate || a.entryDate).getTime() - new Date(b.exitDate || b.entryDate).getTime());
             let currentPeriodEquity = 0;
             let periodPeak = 0;
@@ -152,21 +155,17 @@ export const CumulativePnlChart: React.FC<CumulativePnlChartProps> = ({ trades, 
                 const dd = currentPeriodEquity - periodPeak;
                 if (dd < maxPeriodDD) maxPeriodDD = dd;
             });
-            // periodDrawdown is typically negative
             const periodDrawdown = maxPeriodDD;
 
-            // Update Running Totals
             cumPnl += periodPnl;
             cumR += periodR;
             cumDailyRRSum += periodRRSum;
-            cumDD += periodDrawdown; // Adding negative numbers
+            cumDD += periodDrawdown; 
             totalTradesCount += periodTradesCount;
 
-            // Update Peak for Max Drawdown
             if (cumPnl > peakEquity) peakEquity = cumPnl;
             const currentMaxDD = cumPnl - peakEquity;
 
-            // Update Trade Win/Loss Sums
             periodWins.forEach(t => { sumWins += calculatePnL(t, commission); countWins++; });
             periodLosses.forEach(t => { sumLosses += Math.abs(calculatePnL(t, commission)); countLosses++; });
 
@@ -232,7 +231,6 @@ export const CumulativePnlChart: React.FC<CumulativePnlChartProps> = ({ trades, 
             : 'bg-slate-600/30 text-slate-400 hover:text-white hover:bg-slate-600/50'
         }`;
 
-    // Helper to determine if value is currency
     const isCurrency = ['cum_pnl', 'per_pnl', 'cum_pnl_avg', 'cum_max_dd', 'per_dd', 'cum_dd_avg'].includes(metric);
     const formatVal = (val: number) => isCurrency ? formatCurrency(val) : `${val.toFixed(2)}`;
 
@@ -248,7 +246,7 @@ export const CumulativePnlChart: React.FC<CumulativePnlChartProps> = ({ trades, 
                     </div>
                     
                     <div className="flex items-center gap-2">
-                        {/* Dropdown with specific bg color #334155, handled by click outside */}
+                        {/* Dropdown */}
                         <div className="relative" ref={dropdownRef}>
                             <button 
                                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -276,17 +274,16 @@ export const CumulativePnlChart: React.FC<CumulativePnlChartProps> = ({ trades, 
                             )}
                         </div>
 
-                        {/* Info Icon with Floating Tooltip (Improved Visuals) */}
-                        <div 
-                            className="relative flex items-center"
-                            onMouseEnter={() => setShowInfo(true)}
-                            onMouseLeave={() => setShowInfo(false)}
-                        >
-                            <div className="text-slate-400 hover:text-primary transition-colors cursor-pointer">
+                        {/* Info Icon with Clickable Tooltip */}
+                        <div ref={infoRef} className="relative flex items-center">
+                            <div 
+                                onClick={() => setShowInfo(!showInfo)}
+                                className={`transition-colors cursor-pointer ${showInfo ? 'text-primary' : 'text-slate-400 hover:text-primary'}`}
+                            >
                                 <Info size={16} />
                             </div>
                             {showInfo && (
-                                <div className="absolute top-[-9px] left-full ml-2 w-max max-w-[280px] p-3 bg-[#475569] rounded-lg shadow-[0_10px_25px_rgba(0,0,0,0.3)] z-50 text-left pointer-events-none">
+                                <div className="absolute top-[-9px] left-full ml-2 w-max max-w-[280px] p-3 bg-[#475569] rounded-lg shadow-[0_10px_25px_rgba(0,0,0,0.3)] z-50 text-left">
                                     <p className="text-[11px] text-slate-200 leading-relaxed font-medium">
                                         {currentMetricObj?.desc}
                                     </p>

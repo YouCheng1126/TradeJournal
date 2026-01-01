@@ -19,7 +19,7 @@ export const Reports: React.FC = () => {
         { id: 'perfo', label: 'Performance', icon: Activity },
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
         { id: 'calendar', label: 'Calendar', icon: Calendar },
-        { id: 'day', label: 'Day', icon: Calendar }, // Reusing Calendar icon for Day
+        { id: 'day', label: 'Day', icon: Calendar }, 
         { id: 'risk', label: 'Risk', icon: ShieldAlert },
         { id: 'strategy', label: 'Strategy', icon: Target },
         { id: 'tag', label: 'Tag', icon: Tag },
@@ -27,9 +27,11 @@ export const Reports: React.FC = () => {
     ];
 
     return (
-        <div className="h-full flex flex-col space-y-6">
-            {/* Sub-Navigation */}
-            <div className="flex items-center gap-1 border-b border-slate-700 pb-1 overflow-x-auto">
+        // -m-6 expands the container to counteract Layout padding, placing scrollbar at the edge
+        // h-[calc(100%+3rem)] ensures it fills the height including the negative margin area
+        <div className="flex flex-col -m-6 h-[calc(100%+3rem)]">
+            {/* Sub-Navigation: Added padding to compensate for negative margin */}
+            <div className="flex items-center gap-1 border-b border-slate-700 px-6 pt-6 pb-2 overflow-x-auto flex-shrink-0 bg-background/95 backdrop-blur z-10">
                 {tabs.map((tab) => (
                     <button
                         key={tab.id}
@@ -47,8 +49,8 @@ export const Reports: React.FC = () => {
                 ))}
             </div>
 
-            {/* Content Area */}
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            {/* Content Area: Reduced top padding to pt-2 */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-2">
                 {activeTab === 'perfo' && <Performance />}
                 {activeTab === 'overview' && <Overview />}
                 {activeTab === 'day' && <DayReport />}

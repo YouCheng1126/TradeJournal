@@ -39,9 +39,10 @@ export const DailyWinLossChart: React.FC<DailyWinLossChartProps> = ({ trades, co
     
     // Ref for click outside logic
     const dropdownRef = useRef<HTMLDivElement>(null);
-    // Ref for custom scroll behavior on the list
     const listRef = useRef<HTMLDivElement>(null);
+    const infoRef = useRef<HTMLDivElement>(null);
 
+    // Dropdown Click Outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -56,6 +57,21 @@ export const DailyWinLossChart: React.FC<DailyWinLossChartProps> = ({ trades, co
         };
     }, [isDropdownOpen]);
 
+    // Info Tooltip Click Outside
+    useEffect(() => {
+        const handleClickOutsideInfo = (event: MouseEvent) => {
+            if (infoRef.current && !infoRef.current.contains(event.target as Node)) {
+                setShowInfo(false);
+            }
+        };
+        if (showInfo) {
+            document.addEventListener('mousedown', handleClickOutsideInfo);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutsideInfo);
+        };
+    }, [showInfo]);
+
     // Custom Scroll Logic to control scroll amount (Task 2)
     useEffect(() => {
         const listEl = listRef.current;
@@ -64,14 +80,11 @@ export const DailyWinLossChart: React.FC<DailyWinLossChartProps> = ({ trades, co
         const handleWheel = (e: WheelEvent) => {
             e.preventDefault();
             e.stopPropagation();
-            // Custom step size: 60px
             const step = 60; 
             listEl.scrollTop += (e.deltaY > 0 ? step : -step);
         };
 
-        // Passive: false is required to use preventDefault()
         listEl.addEventListener('wheel', handleWheel, { passive: false });
-        
         return () => {
             listEl.removeEventListener('wheel', handleWheel);
         };
@@ -276,17 +289,16 @@ export const DailyWinLossChart: React.FC<DailyWinLossChartProps> = ({ trades, co
                             )}
                         </div>
 
-                        {/* Info Icon with Floating Tooltip (Improved Visuals) */}
-                        <div 
-                            className="relative flex items-center"
-                            onMouseEnter={() => setShowInfo(true)}
-                            onMouseLeave={() => setShowInfo(false)}
-                        >
-                            <div className="text-slate-400 hover:text-primary transition-colors cursor-pointer">
+                        {/* Info Icon with Clickable Tooltip */}
+                        <div ref={infoRef} className="relative flex items-center">
+                            <div 
+                                onClick={() => setShowInfo(!showInfo)}
+                                className={`transition-colors cursor-pointer ${showInfo ? 'text-primary' : 'text-slate-400 hover:text-primary'}`}
+                            >
                                 <Info size={16} />
                             </div>
                             {showInfo && (
-                                <div className="absolute top-[-9px] left-full ml-2 w-max max-w-[280px] p-3 bg-[#475569] rounded-lg shadow-[0_10px_25px_rgba(0,0,0,0.3)] z-50 text-left pointer-events-none">
+                                <div className="absolute top-[-9px] left-full ml-2 w-max max-w-[280px] p-3 bg-[#475569] rounded-lg shadow-[0_10px_25px_rgba(0,0,0,0.3)] z-50 text-left">
                                     <p className="text-[11px] text-slate-200 leading-relaxed font-medium">
                                         {currentMetricObj?.desc}
                                     </p>
